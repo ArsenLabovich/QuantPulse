@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter);
+
+  /* Trading212-style Palette */
+  --color-background: #131722;
+  --color-surface: #1E222D;
+  --color-border: #2A2E39;
+  --color-primary: #3978FF;
+  --color-success: #00C9A7;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #B2B5BE;
+
+  /* Custom Animations */
+  @keyframes float {
+
+    0%,
+    100% {
+      transform: translateY(0px) scale(1);
+    }
+
+    50% {
+      transform: translateY(-20px) scale(1.05);
+    }
+  }
+
+  @keyframes pulse-slow {
+
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.5;
+      transform: scale(1.1);
+    }
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    @apply text-white antialiased selection:bg-primary/30 select-none;
+  }
+}
+
+@utility animate-float {
+  animation: float 10s ease-in-out infinite;
+}
+
+@utility animate-pulse-slow {
+  animation: pulse-slow 8s ease-in-out infinite;
+}
+
+/* Hide Next.js Dev Tools Overlay (Requested by User) */
+body [data-nextjs-toast],
+body [data-nextjs-dialog-overlay] {
+  display: none !important;
+}
+
+/* Custom utility class for radial gradient since Tailwind v4 syntax might differ slightly for complex gradients */
+.bg-radial-gradient {
+  background-image: radial-gradient(circle at center, var(--tw-gradient-stops));
+}
+
+/* Hide native password reveal button in Edge/IE */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}

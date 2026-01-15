@@ -1,0 +1,26 @@
+# General
+.DS_Store
+.idea
+.vscode
+*.log
+
+# Python / Backend
+backend/__pycache__/
+backend/*.py[cod]
+backend/venv/
+backend/.venv/
+backend/.env
+backend/poetry.lock
+
+# Node / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env
+frontend/.env.local
+frontend/dist/
+frontend/build/
+frontend/package-lock.json
+
+# Docker
+.env
+db_data/
