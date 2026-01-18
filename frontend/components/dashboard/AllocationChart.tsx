@@ -1,0 +1,86 @@
+"use client";
+
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { motion } from "framer-motion";
+
+interface AllocationItem {
+    name: string;
+    value: number;
+    percentage: number;
+    color?: string;
+    [key: string]: any;
+}
+
+interface AllocationChartProps {
+    data: AllocationItem[];
+    isLoading?: boolean;
+}
+
+const COLORS = ['#3978FF', '#00C805', '#FFCE00', '#FF3B30', '#FF9500', '#BF5AF2', '#5E626B'];
+
+export function AllocationChart({ data, isLoading }: AllocationChartProps) {
+    if (isLoading) {
+        return (
+            <div className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full animate-pulse">
+                <div className="h-6 w-32 bg-[#2A2E39] rounded mb-6" />
+                <div className="flex justify-center items-center h-[200px]">
+                    <div className="w-40 h-40 rounded-full border-8 border-[#2A2E39]" />
+                </div>
+            </div>
+        );
+    }
+
+    // Filter out zero values for chart
+    const chartData = data.filter(item => item.value > 0);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col"
+        >
+            <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
+
+            <div className="flex-1 w-full min-h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                            data={chartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                            stroke="none"
+                        >
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#2A2E39', border: 'none', borderRadius: '8px', color: '#fff' }}
+                            itemStyle={{ color: '#fff' }}
+                            formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']}
+                        />
+                        <Legend
+                            layout="vertical"
+                            verticalAlign="middle"
+                            align="right"
+                            wrapperStyle={{ fontSize: '12px' }}
+                            formatter={(value, entry: any) => {
+                                const item = chartData.find(i => i.name === value);
+                                return (
+                                    <span className="text-[#C0C4CC] ml-2">
+                                        {value} <span className="text-[#5E626B] ml-1">({item?.percentage}%)</span>
+                                    </span>
+                                );
+                            }}
+                        />
+                    </PieChart>
+                </ResponsiveContainer>
+            </div>
+        </motion.div>
+    );
+}

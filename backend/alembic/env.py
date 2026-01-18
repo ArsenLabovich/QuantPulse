@@ -10,6 +10,7 @@ from alembic import context
 from core.database import Base, DATABASE_URL
 from models.user import User  # Ensure User is imported so it's registered in Base.metadata
 from models.integration import Integration  # Ensure Integration is imported so it's registered in Base.metadata
+from models.assets import UnifiedAsset, PortfolioAggregate  # Ensure Assets are imported
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

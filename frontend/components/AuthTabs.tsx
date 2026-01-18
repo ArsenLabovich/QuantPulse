@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 type AuthMode = "login" | "register";
 
@@ -88,6 +89,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
     const [passwordError, setPasswordError] = useState("");
 
     const router = useRouter();
+    const { login } = useAuth();
 
     // Real-time validation
     useEffect(() => {
@@ -153,10 +155,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                 const response = await api.post("/auth/register", { email, password });
 
                 // Auto-login logic
-                // The backend returns the token directly on registration
-                localStorage.setItem("token", response.data.access_token);
-                localStorage.setItem("refreshToken", response.data.refresh_token);
-                router.push("/dashboard");
+                login(response.data.access_token, response.data.refresh_token);
             } else {
                 const formData = new URLSearchParams();
                 formData.append("username", email);
@@ -166,9 +165,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 });
 
-                localStorage.setItem("token", response.data.access_token);
-                localStorage.setItem("refreshToken", response.data.refresh_token);
-                router.push("/dashboard");
+                login(response.data.access_token, response.data.refresh_token);
             }
         } catch (err: any) {
             let errorMessage = "An unexpected error occurred";

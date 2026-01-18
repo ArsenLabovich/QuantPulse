@@ -1,26 +1,48 @@
 # General
 .DS_Store
 .idea
-.vscode
+.vscode/
 *.log
+*.sqlite
+*.sqlite3
 
 # Python / Backend
-backend/__pycache__/
-backend/*.py[cod]
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 backend/venv/
 backend/.venv/
 backend/.env
-backend/poetry.lock
+backend/.env.*
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+# Identify virtualenv in root if present
+venv/
+.venv/
 
 # Node / Frontend
 frontend/node_modules/
 frontend/.next/
-frontend/.env
-frontend/.env.local
-frontend/dist/
+frontend/out/
 frontend/build/
-frontend/package-lock.json
+frontend/dist/
+frontend/.env
+frontend/.env.*
+frontend/.eslintcache
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
 
-# Docker
+# Docker & Local Data
 .env
 db_data/
+pgadmin_data/
+redis_data/
+postgres_data/
+
+# OS specific
+Thumbs.db
+Desktop.ini

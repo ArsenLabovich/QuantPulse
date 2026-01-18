@@ -4,13 +4,14 @@
   --font-sans: var(--font-inter);
 
   /* Trading212-style Palette */
-  --color-background: #131722;
-  --color-surface: #1E222D;
-  --color-border: #2A2E39;
+  /* Trading212-style Palette - Deep Black */
+  --color-background: #000000;
+  --color-surface: #101010;
+  --color-border: #1F2123;
   --color-primary: #3978FF;
   --color-success: #00C9A7;
   --color-text-primary: #FFFFFF;
-  --color-text-secondary: #B2B5BE;
+  --color-text-secondary: #909399;
 
   /* Custom Animations */
   @keyframes float {

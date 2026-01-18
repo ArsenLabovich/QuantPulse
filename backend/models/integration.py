@@ -7,9 +7,9 @@ import enum
 
 
 class ProviderID(str, enum.Enum):
-    BINANCE = "binance"
-    TRADING212 = "trading212"
-    ETHEREUM = "ethereum"
+    binance = "binance"
+    trading212 = "trading212"
+    ethereum = "ethereum"
 
 
 class Integration(Base):
