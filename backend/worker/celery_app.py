@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 # Get Redis URL from env or default
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -11,6 +12,14 @@ celery_app = Celery(
     include=["worker.tasks"]
 )
 
+# Celery Beat Schedule
+celery_app.conf.beat_schedule = {
+    "global-sync-every-10-mins": {
+        "task": "trigger_global_sync",
+        "schedule": crontab(minute='*/10'),  # Run at minute 0, 10, 20, 30, 40, 50
+    },
+}
+
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -21,11 +30,3 @@ celery_app.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
 )
-
-# Celery Beat Schedule
-celery_app.conf.beat_schedule = {
-    "global-sync-every-10-mins": {
-        "task": "trigger_global_sync",
-        "schedule": 600.0,  # 10 minutes in seconds
-    },
-}

@@ -73,16 +73,6 @@ async def create_integration(
             # Lightweight check
             exchange.fetch_balance()
             
-            # Check permissions (if possible, commonly implied by successful read without error)
-            # CCXT doesn't always expose permission checking directly without trying an action.
-            # We assume if fetch_balance works, we have read access.
-            # Withdrawal permission check is harder without trying to withdraw (which we shouldn't).
-            # Some exchanges return permissions in load_markets or account_info. 
-            # For now, we trust fetch_balance success as "Valid Read Access".
-            
-            # OPTIONAL: Explicit check for logic "Verify that the key does NOT have withdrawal permissions"
-            # This usually requires inspecting the API key metadata which might be available via specific endpoints
-            # depending on the exchange. Binance has /sapi/v1/account/apiRestrictions
             try:
                 # This is specific to Binance
                 response = exchange.sapi_get_account_api_restrictions()
@@ -92,18 +82,44 @@ async def create_integration(
                         detail="Security Alert: This API Key has 'Enable Withdrawals' checked. Please disable it in Binance settings."
                     )
             except Exception as e:
-                # If we can't check permissions, we assume it's risky or proceed? 
-                # For this task, we will soft-fail or ignore if specific endpoint fails, 
-                # but let's try to be strict if the user requested it.
-                # Assuming the user wants strict check.
                 if "Security Alert" in str(e):
                     raise e
-                # Fallback: simple fetch_balance worked, so connection is OK.
 
         except ccxt.AuthenticationError:
              raise HTTPException(status_code=400, detail="Invalid API Credentials")
         except Exception as e:
              raise HTTPException(status_code=400, detail=f"Connection Failed: {str(e)}")
+             
+    elif integration_in.provider_id == ProviderID.trading212:
+        api_key = integration_in.credentials.get("api_key")
+        
+        if not api_key:
+             raise HTTPException(status_code=400, detail="Missing API Key")
+
+        api_secret = integration_in.credentials.get("api_secret")
+        
+        # Trading 212 Validation
+        try:
+            from services.trading212 import Trading212Client
+            print(f"DEBUG: Validating T212 Key: {api_key[:5]}... Secret: {'Provided' if api_secret else 'None'}")
+            
+            client = Trading212Client(api_key=api_key, api_secret=api_secret)
+            validation_result = await client.validate_keys()
+            
+            print(f"DEBUG: T212 Validation Result: {validation_result}")
+            
+            if not validation_result.get("valid"):
+                raise HTTPException(status_code=400, detail="Invalid API Key. Authentication failed.")
+            
+            # Save is_demo flag to settings
+            if validation_result.get("is_demo"):
+                integration_settings["is_demo"] = True
+                
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            print(f"DEBUG: T212 Exception: {e}")
+            raise HTTPException(status_code=400, detail=f"Connection Failed: {str(e)}")
 
     # 3. Encrypt Credentials
     encrypted_credentials = encryption_service.encrypt(json.dumps(integration_in.credentials))

@@ -21,6 +21,7 @@ export function SyncWidget() {
 
     // To prevent multiple auto-sync triggers
     const isSyncingRef = useRef(false);
+    const pendingCountRef = useRef(0);
 
     // Load cached state immediately
     useEffect(() => {
@@ -32,11 +33,15 @@ export function SyncWidget() {
             setAutoSyncInterval(interval);
 
             if (cachedLastSync) {
-                const last = new Date(cachedLastSync);
-                const next = new Date(last.getTime() + interval * 1000);
-                setNextAutoSyncTime(next);
-                // Calculate diff immediately for UI
+                // Calculate next wall-clock sync time (aligned to 10-minute marks)
                 const now = new Date();
+                const msPerInterval = interval * 1000;
+                const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
+                const next = new Date(nextTimestamp);
+
+                setNextAutoSyncTime(next);
+
+                // Calculate diff immediately for UI
                 const diff = Math.ceil((next.getTime() - now.getTime()) / 1000);
                 setTimeToAutoSync(diff);
             }
@@ -52,13 +57,16 @@ export function SyncWidget() {
                 setAutoSyncInterval(auto_sync_interval);
                 localStorage.setItem("auto_sync_interval", auto_sync_interval.toString());
 
-                if (last_sync_time) {
-                    const last = new Date(last_sync_time);
-                    localStorage.setItem("last_sync_time", last_sync_time);
+                // Calculate next wall-clock sync time (aligned to 10-minute marks)
+                // e.g. 13:24 -> 13:30, 13:30:05 -> 13:40
+                const now = new Date();
+                const msPerInterval = auto_sync_interval * 1000;
+                // Round up to next interval
+                const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
+                const next = new Date(nextTimestamp);
 
-                    const next = new Date(last.getTime() + auto_sync_interval * 1000);
-                    setNextAutoSyncTime(next);
-                }
+                setNextAutoSyncTime(next);
+                localStorage.setItem("last_sync_time", last_sync_time || now.toISOString()); // Still cache last sync for ref
             }
 
             if (active_task_id) {
@@ -83,13 +91,14 @@ export function SyncWidget() {
                     console.error("Failed to restore task progress", e);
                 }
             } else if (remaining_cooldown > 0) {
-                setCooldownRemaining(remaining_cooldown);
-                setStatus("COOLDOWN");
+                // FORCE OVERRIDE: Ignore cooldown
+                setCooldownRemaining(0);
+                setStatus("IDLE");
                 isSyncingRef.current = false;
             } else {
                 isSyncingRef.current = false;
             }
-            return remaining_cooldown;
+            return 0;
         } catch (error) {
             console.error("Failed to fetch sync status", error);
             return 0;
@@ -98,7 +107,8 @@ export function SyncWidget() {
 
     const handleSync = useCallback(async () => {
         // Rely on status to prevent double-submit, but allow retry if previously failed (IDLE/ERROR)
-        if (status === "SYNCING" || status === "COOLDOWN") return;
+        // Disabled logic removed for testing
+        // if (status === "SYNCING" || status === "COOLDOWN") return;
 
         try {
             // Clear auto-sync timer immediately to prevent loops
@@ -115,11 +125,10 @@ export function SyncWidget() {
         } catch (error: any) {
             isSyncingRef.current = false;
             // If failed, restore auto-sync? Or just wait for user?
-            // Let's set error
             if (error.response?.status === 429) {
-                const retryAfter = error.response.data.detail.retry_after || 20;
-                setCooldownRemaining(retryAfter);
-                setStatus("COOLDOWN");
+                // Ignore 429, set IDLE
+                setCooldownRemaining(0);
+                setStatus("IDLE");
             } else {
                 console.error("Sync trigger failed", error);
                 setStatus("ERROR");
@@ -189,13 +198,35 @@ export function SyncWidget() {
                     }
                 }
 
+                if (data.status === "PENDING") {
+                    setSyncMessage("Queued...");
+                    pendingCountRef.current += 1;
+
+                    // If stuck in PENDING for > 10 seconds (approx 12 polls), assume lost
+                    if (pendingCountRef.current > 12) {
+                        console.warn("Task stuck in PENDING, resetting");
+                        setStatus("ERROR");
+                        setTaskId(null);
+                        setSyncMessage("Sync Timeout");
+                        isSyncingRef.current = false;
+                        setTimeout(() => setStatus("IDLE"), 3000);
+                        return; // Exit poll
+                    }
+                } else {
+                    // Reset pending counter if we get any other status (PROGRESS/SUCCESS/etc)
+                    pendingCountRef.current = 0;
+                }
+
                 if (data.status === "SUCCESS" || (data.info && data.info.stage === "DONE")) {
                     setStatus("SUCCESS");
                     setSyncProgress(100);
                     // Update next auto sync time immediately based on local time + interval
                     // (Double check with server later)
                     if (autoSyncInterval) {
-                        setNextAutoSyncTime(new Date(Date.now() + autoSyncInterval * 1000));
+                        const now = new Date();
+                        const msPerInterval = autoSyncInterval * 1000;
+                        const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
+                        setNextAutoSyncTime(new Date(nextTimestamp));
                     }
 
                     // Trigger global refresh
@@ -204,23 +235,21 @@ export function SyncWidget() {
 
                     // Fetch authoritative info
                     setTimeout(async () => {
-                        const remaining = await fetchStatus();
+                        await fetchStatus();
                         setTaskId(null);
-                        if (remaining > 0) {
-                            setStatus("COOLDOWN");
-                        } else {
-                            setStatus("IDLE");
-                        }
+                        setStatus("IDLE");
                     }, 1000);
 
-                } else if (data.status === "FAILURE") {
+                } else if (data.status === "FAILURE" || data.status === "REVOKED") {
                     setStatus("ERROR");
                     setTaskId(null);
+                    setSyncMessage("Sync Failed"); // Reset message
                     isSyncingRef.current = false;
                     setTimeout(() => setStatus("IDLE"), 3000);
                 }
             } catch (error) {
                 console.error("Poll error", error);
+                // Also handle network error as potential failure if it persists
             }
         }, 800); // Poll slightly faster for smooth progress
 
@@ -240,7 +269,8 @@ export function SyncWidget() {
             <button
                 type="button"
                 onClick={handleSync}
-                disabled={status !== "IDLE" && status !== "ERROR"}
+                // Disabled logic removed for testing
+                // disabled={status !== "IDLE" && status !== "ERROR"}
                 className={`
                     flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300
                     border relative overflow-hidden

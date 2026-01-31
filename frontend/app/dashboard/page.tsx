@@ -5,17 +5,11 @@ import api from "@/lib/api";
 import { NetWorthCard } from "@/components/dashboard/NetWorthCard";
 import { AllocationChart } from "@/components/dashboard/AllocationChart";
 import { HistoryChart } from "@/components/dashboard/HistoryChart";
-import { AssetList } from "@/components/dashboard/AssetList";
-import { Plus, ArrowUpRight, TrendingUp, DollarSign } from "lucide-react";
+import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
+import { MoversWidget } from "@/components/dashboard/MoversWidget";
 import { useRefresh } from "@/context/RefreshContext";
 import { motion } from "framer-motion";
-
-interface DashboardSummary {
-    net_worth: number;
-    daily_change: number;
-    allocation: { name: string; value: number; percentage: number }[];
-    history: { date: string; value: number }[];
-}
+import { DashboardSummary } from "@/types/dashboard";
 
 export default function DashboardPage() {
     const { refreshKey } = useRefresh();
@@ -36,16 +30,17 @@ export default function DashboardPage() {
 
     useEffect(() => {
         // Initial load (show loading) or Refresh trigger (silent or animated)
-        // We use refreshKey === 0 to denote initial load
         fetchData(refreshKey === 0);
     }, [refreshKey]);
 
     // Placeholder data for initial skeleton
-    const skeletonData = {
+    const skeletonData: DashboardSummary = {
         net_worth: 0,
         daily_change: 0,
         allocation: [],
-        history: []
+        history: [],
+        holdings: [],
+        movers: { top_gainer: null, top_loser: null }
     };
 
     const displayData = summary || skeletonData;
@@ -94,9 +89,21 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* Asset List */}
+            {/* Movers & Holdings */}
             <div>
-                <AssetList />
+                <h2 className="text-xl font-bold text-white mb-4">Assets</h2>
+
+                {displayData.movers && (
+                    <MoversWidget
+                        gainer={displayData.movers.top_gainer}
+                        loser={displayData.movers.top_loser}
+                    />
+                )}
+
+                <HoldingsTable
+                    data={displayData.holdings}
+                    isLoading={loading}
+                />
             </div>
         </motion.div>
     );

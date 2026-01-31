@@ -32,7 +32,6 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
 
 
     const handleProviderSelect = (provider: string) => {
-        if (provider !== "binance") return; // Only text Binance active for now
         setSelectedProvider(provider);
         setStep(2);
     };
@@ -67,6 +66,15 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                 if (sErrors.length > 0) errors.apiSecret = sErrors;
             } else if (isSubmit) {
                 errors.apiSecret = ["API Secret is required"];
+            }
+        } else if (selectedProvider === "trading212") {
+            const key = formData.apiKey.trim();
+            if (key) {
+                if (key.length < 10) {
+                    errors.apiKey = ["API Key looks too short"];
+                }
+            } else if (isSubmit) {
+                errors.apiKey = ["API Key is required"];
             }
         }
         return Object.keys(errors).length > 0 ? errors : null;
@@ -250,15 +258,21 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                 </div>
                             </button>
 
-                            <div className="bg-[#131722] border border-[#1F2123] rounded-xl p-6 flex flex-col items-center gap-3 opacity-50 cursor-not-allowed">
+                            <button
+                                onClick={() => handleProviderSelect("trading212")}
+                                className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
+                            >
                                 <div className="w-12 h-12 flex items-center justify-center mb-2">
                                     <svg viewBox="0 0 24 24" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                 </div>
                                 <span className="text-white font-medium">Trading 212</span>
-                                <span className="text-xs text-[#909399] bg-[#1F2123] px-2 py-0.5 rounded-full">Coming Soon</span>
-                            </div>
+                                <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    Active
+                                </div>
+                            </button>
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
@@ -275,14 +289,25 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                 </div>
                             )}
 
-                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3">
-                                <Lock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-                                <div className="text-sm text-blue-300">
-                                    Your keys are encrypted using AES-256 before storage.
-                                    <br />
-                                    <span className="text-blue-200 mt-1 block font-medium">Please disable &quot;Withdrawals&quot; on your API key.</span>
+                            {selectedProvider === 'binance' ? (
+                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3">
+                                    <Lock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                                    <div className="text-sm text-blue-300">
+                                        Your keys are encrypted using AES-256 before storage.
+                                        <br />
+                                        <span className="text-blue-200 mt-1 block font-medium">Please disable &quot;Withdrawals&quot; on your API key.</span>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3">
+                                    <Lock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                                    <div className="text-sm text-blue-300">
+                                        Your API Key is encrypted securely.
+                                        <br />
+                                        <span className="text-blue-200 mt-1 block font-medium">Generate it in Settings &gt; API.</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
@@ -303,7 +328,9 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
 
                             <div className="space-y-1.5 relative">
                                 <div className="flex items-center gap-2">
-                                    <label className="text-sm font-medium text-[#909399]">API Key</label>
+                                    <label className="text-sm font-medium text-[#909399]">
+                                        {selectedProvider === 'trading212' ? 'API Key ID' : 'API Key'}
+                                    </label>
                                 </div>
 
                                 <input
@@ -329,33 +356,38 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                 ))}
                             </div>
 
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-[#909399]">API Secret</label>
-                                <input
-                                    type="text"
-                                    name="qp_api_secret_v1"
-                                    id="qp_api_secret_v1"
-                                    required
-                                    readOnly={true}
-                                    onFocus={(e) => e.target.readOnly = false}
-                                    className={`w-full bg-[#131722] border rounded-lg px-4 py-2.5 text-white placeholder:text-[#333] focus:outline-none transition-colors ${formErrors.apiSecret?.length
-                                        ? 'border-red-500 focus:border-red-500'
-                                        : 'border-[#1F2123] focus:border-[#3978FF]'
-                                        }`}
-                                    style={{ WebkitTextSecurity: 'disc' }}
-                                    value={formData.apiSecret}
-                                    onChange={e => {
-                                        setFormData({ ...formData, apiSecret: e.target.value });
-                                        if (formErrors.apiSecret) setFormErrors({ ...formErrors, apiSecret: undefined });
-                                    }}
-                                    autoComplete="off"
-                                    data-lpignore="true"
-                                    data-form-type="other"
-                                />
-                                {formErrors.apiSecret && formErrors.apiSecret.map((err, i) => (
-                                    <p key={i} className="text-xs text-red-500 mt-1">{err}</p>
-                                ))}
-                            </div>
+
+
+                            {(selectedProvider === 'binance' || selectedProvider === 'trading212') && (
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium text-[#909399]">
+                                        {selectedProvider === 'trading212' ? 'API Secret / Private Key' : 'API Secret'}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        name="qp_api_secret_v1"
+                                        id="qp_api_secret_v1"
+                                        required
+                                        readOnly={true}
+                                        onFocus={(e) => e.target.readOnly = false}
+                                        className={`w-full bg-[#131722] border rounded-lg px-4 py-2.5 text-white placeholder:text-[#333] focus:outline-none transition-colors ${formErrors.apiSecret?.length
+                                            ? 'border-red-500 focus:border-red-500'
+                                            : 'border-[#1F2123] focus:border-[#3978FF]'
+                                            }`}
+                                        value={formData.apiSecret}
+                                        onChange={e => {
+                                            setFormData({ ...formData, apiSecret: e.target.value });
+                                            if (formErrors.apiSecret) setFormErrors({ ...formErrors, apiSecret: undefined });
+                                        }}
+                                        autoComplete="off"
+                                        data-lpignore="true"
+                                        data-form-type="other"
+                                    />
+                                    {formErrors.apiSecret && formErrors.apiSecret.map((err, i) => (
+                                        <p key={i} className="text-xs text-red-500 mt-1">{err}</p>
+                                    ))}
+                                </div>
+                            )}
 
                             <div className="pt-2 flex gap-3">
                                 <button
@@ -386,7 +418,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                         </form>
                     )}
                 </div>
-            </motion.div>
-        </div>
+            </motion.div >
+        </div >
     );
 }

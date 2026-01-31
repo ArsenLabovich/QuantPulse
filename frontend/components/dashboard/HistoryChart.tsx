@@ -2,12 +2,8 @@
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from "framer-motion";
-
-interface HistoryItem {
-    date: string;
-    value: number;
-    [key: string]: any;
-}
+import { useMemo } from "react";
+import { HistoryItem } from "@/types/dashboard";
 
 interface HistoryChartProps {
     data: HistoryItem[];
@@ -23,6 +19,10 @@ export function HistoryChart({ data, isLoading }: HistoryChartProps) {
             </div>
         );
     }
+
+    const filteredData = useMemo(() => {
+        return data.filter(item => item.value > 0);
+    }, [data]);
 
     return (
         <motion.div
@@ -41,7 +41,7 @@ export function HistoryChart({ data, isLoading }: HistoryChartProps) {
             <div className="flex-1 w-full min-h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                        data={data}
+                        data={filteredData}
                         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                     >
                         <defs>

@@ -72,7 +72,7 @@ export const CosmosBackground = ({ className }: { className?: string }) => {
     }, []);
 
     return (
-        <div className={cn("fixed inset-0 z-0 overflow-hidden bg-slate-950", className)} suppressHydrationWarning>
+        <div className={cn("fixed inset-0 z-0 overflow-hidden bg-slate-950 pointer-events-none", className)} suppressHydrationWarning>
             {/* Deep Space Gradients (Nebulas) */}
             <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-900/20 blur-[120px] rounded-full animate-pulse-slow" />
             <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-900/20 blur-[120px] rounded-full animate-pulse-slow delay-1000" />

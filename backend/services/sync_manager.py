@@ -16,7 +16,7 @@ class SyncManager:
     - checking task status
     """
     
-    COOLDOWN_SECONDS = 20  # 20 seconds for testing
+    COOLDOWN_SECONDS = 3  # 3 seconds as requested
     AUTO_SYNC_INTERVAL = 600 # 10 minutes for auto-refresh
     REDIS_PREFIX = "sync_cooldown:"
 

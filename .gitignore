@@ -46,3 +46,6 @@ postgres_data/
 # OS specific
 Thumbs.db
 Desktop.ini
+
+# Misc
+scripts/

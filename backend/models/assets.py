@@ -21,7 +21,10 @@ class UnifiedAsset(Base):
     original_name = Column(String, nullable=False)
     asset_type = Column(Enum(AssetType), nullable=False)
     amount = Column(Numeric(precision=30, scale=8), nullable=False)
+    current_price = Column(Numeric(precision=30, scale=8), nullable=True) # New
+    change_24h = Column(Numeric(precision=10, scale=2), nullable=True)     # New (%)
     usd_value = Column(Numeric(precision=30, scale=8), nullable=True)
+    image_url = Column(String, nullable=True) # Logo/Icon URL
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 class PortfolioSnapshot(Base):
