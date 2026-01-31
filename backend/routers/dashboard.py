@@ -6,9 +6,10 @@ import datetime
 
 from core.database import get_db
 from models.user import User
-from models.assets import UnifiedAsset, PortfolioSnapshot
-from core.deps import get_current_user
 from models.integration import Integration
+from models.assets import UnifiedAsset, PortfolioSnapshot, AssetType
+from services.icons import IconResolver
+from core.deps import get_current_user
 from worker.tasks import sync_integration_data
 from pydantic import BaseModel
 
@@ -169,6 +170,8 @@ class HoldingItem(BaseModel):
     name: str
     icon_url: Optional[str] = None
     price: float
+    price_usd: float
+    currency: str = "USD"
     balance: float
     value_usd: float
     change_24h: Optional[float] = 0.0
@@ -287,22 +290,27 @@ async def get_dashboard_summary(
             percentage=round(percent, 2)
         ))
 
-    # 4. History (Chart Data)
-    # Get last 30 days of snapshots
-    month_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
+    # 4. History (Chart Data) - Default 1d for Summary
+    yesterday = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
     history_query = await db.execute(
         select(PortfolioSnapshot)
         .where(
             PortfolioSnapshot.user_id == current_user.id,
-            PortfolioSnapshot.timestamp >= month_ago
+            PortfolioSnapshot.timestamp >= yesterday
         )
         .order_by(PortfolioSnapshot.timestamp)
     )
     snapshots = history_query.scalars().all()
     
+    # Simple Aggregation for Summary
+    target_points = 60
+    if len(snapshots) > target_points:
+        step = len(snapshots) // target_points
+        snapshots = snapshots[::step]
+
     history = [
         HistoryItem(
-            date=s.timestamp.strftime("%Y-%m-%d %H:%M"), 
+            date=s.timestamp.strftime("%Y-%m-%dT%H:%M:%S"), 
             value=float(s.total_value_usd)
         ) for s in snapshots
     ]
@@ -339,7 +347,8 @@ async def get_dashboard_summary(
                 "value_usd": 0.0,
                 "weighted_change_sum": 0.0,
                 "price": price,
-                "image_url": asset.image_url # Store image_url from first occurrence (usually fine)
+                "currency": asset.currency or "USD",
+                "image_url": asset.image_url 
             }
             
         group = holdings_map[symbol]
@@ -372,17 +381,22 @@ async def get_dashboard_summary(
              # But simplified: if value is 0, change impact is 0.
              pass
 
-        # Use stored image_url or fallback
-        if data.get("image_url"):
-            icon_url = data["image_url"]
-        else:
-            icon_url = f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/{sym.lower()}.png"
+        # Use stored image_url or professional placeholder fallback
+        icon_url = data.get("image_url")
+        if not icon_url:
+            # Live resolution as temporary fallback for old data or edge cases
+            icon_url = IconResolver.get_icon_url(sym, AssetType.STOCK, "unknown") # Type is tricky here if mixed, but IconResolver handles it
+        
+        # Calculate USD price based on value_usd / balance
+        price_usd = total_val / data["balance"] if data["balance"] > 0 else data["price"]
         
         holdings.append(HoldingItem(
             symbol=sym,
             name=data["name"],
             icon_url=icon_url,
             price=data["price"],
+            price_usd=price_usd,
+            currency=data["currency"],
             balance=data["balance"],
             value_usd=total_val,
             change_24h=avg_change
@@ -427,6 +441,77 @@ async def get_dashboard_summary(
         holdings=holdings,
         movers=movers
     )
+
+@router.get("/history", response_model=List[HistoryItem])
+async def get_portfolio_history(
+    range: str = "1d",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    
+    # 1. Map Range to Time Window
+    ranges = {
+        "1h": datetime.timedelta(hours=1),
+        "6h": datetime.timedelta(hours=6),
+        "1d": datetime.timedelta(days=1),
+        "1w": datetime.timedelta(days=7),
+        "1M": datetime.timedelta(days=30),
+        "ALL": None, # Special case: no filter
+    }
+    
+    delta = ranges.get(range, datetime.timedelta(days=1))
+    start_time = now - delta if delta else None
+    
+    # 2. Fetch Snapshots
+    query = select(PortfolioSnapshot).where(PortfolioSnapshot.user_id == current_user.id)
+    if start_time:
+        query = query.where(PortfolioSnapshot.timestamp >= start_time)
+    query = query.order_by(PortfolioSnapshot.timestamp)
+    
+    result = await db.execute(query)
+    snapshots = result.scalars().all()
+    
+    # 2.5 Filter Initial Setup Noise (Integration-aware)
+    # We skip leading points that have fewer integrations than the "complete" snapshots
+    # to avoid the "ramp-up" staircase effect during the very first sync.
+    if snapshots:
+        # 1. Find the highest integration count present in this dataset
+        max_ints = 0
+        for s in snapshots:
+            count = s.data.get("integrations_count", 0) if isinstance(s.data, dict) else 0
+            if count > max_ints:
+                max_ints = count
+        
+        # 2. Skip leading points until we hit the max_ints threshold
+        if max_ints > 0:
+            start_idx = 0
+            for i, s in enumerate(snapshots):
+                count = s.data.get("integrations_count", 0) if isinstance(s.data, dict) else 0
+                if count >= max_ints:
+                    start_idx = i
+                    break
+            snapshots = snapshots[start_idx:]
+
+    # 3. Adaptive Aggregation (Thinning out data for long ranges)
+    # Target ~80 points for a dense and professional-looking curve
+    total_points = len(snapshots)
+    target_points = 80
+    
+    if total_points > target_points:
+        step = total_points // target_points
+        aggregated = snapshots[::step]
+        # Always include the very last point for accuracy
+        if len(aggregated) > 0 and aggregated[-1].id != snapshots[-1].id:
+            aggregated.append(snapshots[-1])
+        snapshots = aggregated or snapshots # Fallback to original if empty logic error
+
+    return [
+        HistoryItem(
+            date=s.timestamp.strftime("%Y-%m-%dT%H:%M:%S"), 
+            value=float(s.total_value_usd)
+        ) for s in snapshots
+    ]
 
 @router.get("/assets")
 async def get_dashboard_assets(

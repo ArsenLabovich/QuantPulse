@@ -4,7 +4,6 @@ from redis import Redis
 from celery.result import AsyncResult
 from models.user import User
 from models.integration import Integration
-from worker.tasks import sync_integration_data
 from worker.celery_app import celery_app
 from core.config import settings
 
@@ -16,8 +15,8 @@ class SyncManager:
     - checking task status
     """
     
-    COOLDOWN_SECONDS = 3  # 3 seconds as requested
-    AUTO_SYNC_INTERVAL = 600 # 10 minutes for auto-refresh
+    COOLDOWN_SECONDS = 0  # Disabled by user request
+    AUTO_SYNC_INTERVAL = 60 # 1 minute for auto-refresh
     REDIS_PREFIX = "sync_cooldown:"
 
     def __init__(self, redis_client: Redis):
@@ -46,16 +45,16 @@ class SyncManager:
         Returns the task_id.
         Raises different exceptions? No, assuming caller checked `can_trigger_sync`.
         """
-        # 1. Trigger Task
-        task = sync_integration_data.delay(str(integration_id))
+        # 1. Trigger Task (Using name to avoid circular import)
+        task = celery_app.send_task("sync_integration_data", args=[str(integration_id)])
         
-        # 2. Set Cooldown
-        # We set the key with an expiration
-        self.redis.setex(
-            self._get_cooldown_key(user_id),
-            self.COOLDOWN_SECONDS,
-            "active"
-        )
+        # 2. Set Cooldown (only if enabled)
+        if self.COOLDOWN_SECONDS > 0:
+            self.redis.setex(
+                self._get_cooldown_key(user_id),
+                self.COOLDOWN_SECONDS,
+                "active"
+            )
         
         # 3. Set Active Task (for persistence)
         # Expires after 5 minutes just in case

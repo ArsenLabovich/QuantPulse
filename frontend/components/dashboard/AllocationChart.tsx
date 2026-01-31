@@ -38,13 +38,13 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col"
+            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col overflow-hidden outline-none"
         >
             <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
 
-            <div className="flex-1 w-full min-h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+            <div className="flex-1 w-full min-h-[250px] overflow-hidden outline-none">
+                <ResponsiveContainer width="100%" height="100%" style={{ outline: 'none' }}>
+                    <PieChart style={{ outline: 'none' }} tabIndex={-1} accessibilityLayer={false} role="img">
                         <Pie
                             data={chartData}
                             cx="50%"
@@ -54,6 +54,8 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
                             paddingAngle={5}
                             dataKey="value"
                             stroke="none"
+                            activeShape={false}
+                            isAnimationActive={false}
                         >
                             {chartData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

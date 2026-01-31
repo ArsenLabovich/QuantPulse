@@ -15,6 +15,7 @@ export default function DashboardPage() {
     const { refreshKey } = useRefresh();
     const [summary, setSummary] = useState<DashboardSummary | null>(null);
     const [loading, setLoading] = useState(true);
+    const [historyRange, setHistoryRange] = useState("1d");
 
     const fetchData = async (showLoading = true) => {
         if (showLoading) setLoading(true);
@@ -86,6 +87,8 @@ export default function DashboardPage() {
                 <HistoryChart
                     data={displayData.history}
                     isLoading={loading}
+                    range={historyRange}
+                    onRangeChange={setHistoryRange}
                 />
             </div>
 

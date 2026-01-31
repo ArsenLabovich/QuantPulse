@@ -55,71 +55,24 @@ async def create_integration(
                 # If decryption fails for old/corrupt data, skip it safely
                 continue
 
-    # 1. Validate Provider
-    if integration_in.provider_id == ProviderID.binance:
-        api_key = integration_in.credentials.get("api_key")
-        api_secret = integration_in.credentials.get("api_secret")
-        
-        if not api_key or not api_secret:
-             raise HTTPException(status_code=400, detail="Missing API Key or Secret")
-
-        # 2. CCXT Validation
-        try:
-            exchange = ccxt.binance({
-                'apiKey': api_key,
-                'secret': api_secret,
-                'enableRateLimit': True,
-            })
-            # Lightweight check
-            exchange.fetch_balance()
-            
-            try:
-                # This is specific to Binance
-                response = exchange.sapi_get_account_api_restrictions()
-                if response.get('enableWithdrawals'):
-                     raise HTTPException(
-                        status_code=400, 
-                        detail="Security Alert: This API Key has 'Enable Withdrawals' checked. Please disable it in Binance settings."
-                    )
-            except Exception as e:
-                if "Security Alert" in str(e):
-                    raise e
-
-        except ccxt.AuthenticationError:
-             raise HTTPException(status_code=400, detail="Invalid API Credentials")
-        except Exception as e:
-             raise HTTPException(status_code=400, detail=f"Connection Failed: {str(e)}")
-             
-    elif integration_in.provider_id == ProviderID.trading212:
-        api_key = integration_in.credentials.get("api_key")
-        
-        if not api_key:
-             raise HTTPException(status_code=400, detail="Missing API Key")
-
-        api_secret = integration_in.credentials.get("api_secret")
-        
-        # Trading 212 Validation
-        try:
-            from services.trading212 import Trading212Client
-            print(f"DEBUG: Validating T212 Key: {api_key[:5]}... Secret: {'Provided' if api_secret else 'None'}")
-            
-            client = Trading212Client(api_key=api_key, api_secret=api_secret)
-            validation_result = await client.validate_keys()
-            
-            print(f"DEBUG: T212 Validation Result: {validation_result}")
-            
-            if not validation_result.get("valid"):
-                raise HTTPException(status_code=400, detail="Invalid API Key. Authentication failed.")
-            
-            # Save is_demo flag to settings
-            if validation_result.get("is_demo"):
-                integration_settings["is_demo"] = True
-                
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            print(f"DEBUG: T212 Exception: {e}")
-            raise HTTPException(status_code=400, detail=f"Connection Failed: {str(e)}")
+    # 1. Use Adapter to Validate
+    from adapters.factory import AdapterFactory
+    try:
+        adapter = AdapterFactory.get_adapter(integration_in.provider_id)
+        is_valid = await adapter.validate_credentials(
+            integration_in.credentials, 
+            integration_in.settings
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid credentials for {integration_in.provider_id.value}"
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=400, detail=f"Validation error: {str(e)}")
 
     # 3. Encrypt Credentials
     encrypted_credentials = encryption_service.encrypt(json.dumps(integration_in.credentials))

@@ -44,7 +44,7 @@ export default function SmartRefreshButton({ onRefreshComplete }: SmartRefreshBu
     }, [cooldown]);
 
     const startRefresh = async () => {
-        if (cooldown > 0 || status === "PROGRESS") return;
+        if (status === "PROGRESS") return;
 
         try {
             setStatus("PROGRESS");
@@ -81,10 +81,12 @@ export default function SmartRefreshButton({ onRefreshComplete }: SmartRefreshBu
 
                     await onRefreshComplete();
 
+                    /* Cooldown logic removed */
+                    /*
                     const cooldownSeconds = 300; // 5 min
-                    const expiry = Date.now() + cooldownSeconds * 1000;
-                    localStorage.setItem("refresh_cooldown", expiry.toString());
+                    ...
                     setCooldown(cooldownSeconds);
+                    */
 
                     setTimeout(() => {
                         setStatus("IDLE");
@@ -145,7 +147,7 @@ export default function SmartRefreshButton({ onRefreshComplete }: SmartRefreshBu
     };
 
     // UI Logic
-    const isDisabled = cooldown > 0 || status === "PROGRESS" || status === "DONE";
+    const isDisabled = status === "PROGRESS" || status === "DONE";
 
     return (
         <div className="relative flex flex-col items-end">
@@ -174,7 +176,7 @@ export default function SmartRefreshButton({ onRefreshComplete }: SmartRefreshBu
                     {/* Text + Dot */}
                     <div className="flex items-center space-x-2 mb-1">
                         <span className="text-xs text-gray-500 font-medium truncate">
-                            {cooldown > 0 ? "Cooldown active" : message}
+                            {message}
                         </span>
                         <div className={`w-1.5 h-1.5 rounded-full ${getStatusColor()} ${status === "PROGRESS" ? "animate-pulse" : ""}`} />
                     </div>

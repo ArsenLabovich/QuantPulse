@@ -44,7 +44,7 @@
 @layer base {
   body {
     background-color: var(--color-background);
-    @apply text-white antialiased selection:bg-primary/30 select-none;
+    @apply text-white antialiased selection:bg-primary/30 select-none overflow-x-hidden;
   }
 }
 
@@ -81,4 +81,70 @@ input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 30px #131722 inset !important;
   -webkit-text-fill-color: white !important;
   transition: background-color 5000s ease-in-out 0s;
+}
+
+/* 
+  DEFINITIVE FOCUS RING REMOVAL
+  Targeting Recharts and global interactive elements with maximum priority.
+*/
+
+/* Reset all focus/active states to transparent/none */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+*:focus,
+*:active,
+*:focus-within,
+*:focus-visible {
+  outline: none !important;
+  outline-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Component-specific overrides for Recharts */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface *,
+.recharts-legend-item,
+.recharts-tooltip-cursor,
+.recharts-sector,
+.recharts-pie-sector,
+.recharts-layer,
+.recharts-rectangle,
+svg,
+svg *,
+path,
+rect,
+circle,
+g {
+  outline: none !important;
+  outline-width: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Prevent text selection highlight on the chart area */
+.recharts-wrapper *::selection {
+  background: transparent;
+  color: inherit;
+}
+
+/* Ensure focus-visible is only used for accessibility where appropriate (e.g. keyboard), 
+   but we'll keep it disabled for charts specifically */
+.recharts-wrapper:focus-visible {
+  outline: none !important;
+}
+
+/* Re-enable subtle focus transitions for standard inputs but NOT charts */
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid #3978FF !important;
+  outline-offset: 2px;
 }

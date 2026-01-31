@@ -90,12 +90,9 @@ export function SyncWidget() {
                 } catch (e) {
                     console.error("Failed to restore task progress", e);
                 }
-            } else if (remaining_cooldown > 0) {
-                // FORCE OVERRIDE: Ignore cooldown
+            } else {
                 setCooldownRemaining(0);
                 setStatus("IDLE");
-                isSyncingRef.current = false;
-            } else {
                 isSyncingRef.current = false;
             }
             return 0;
@@ -108,7 +105,7 @@ export function SyncWidget() {
     const handleSync = useCallback(async () => {
         // Rely on status to prevent double-submit, but allow retry if previously failed (IDLE/ERROR)
         // Disabled logic removed for testing
-        // if (status === "SYNCING" || status === "COOLDOWN") return;
+        if (status === "SYNCING") return;
 
         try {
             // Clear auto-sync timer immediately to prevent loops
@@ -147,16 +144,12 @@ export function SyncWidget() {
         const timer = setInterval(() => {
             const now = new Date();
 
-            // 1. Handle Cooldown
+            // 1. Handle Cooldown - Disabled
+            /*
             if (status === "COOLDOWN") {
-                setCooldownRemaining((prev) => {
-                    if (prev <= 1) {
-                        setStatus("IDLE");
-                        return 0;
-                    }
-                    return prev - 1;
-                });
+                ...
             }
+            */
 
             // 2. Handle Auto-Sync Countdown
             if (nextAutoSyncTime && status === "IDLE") {
@@ -269,8 +262,7 @@ export function SyncWidget() {
             <button
                 type="button"
                 onClick={handleSync}
-                // Disabled logic removed for testing
-                // disabled={status !== "IDLE" && status !== "ERROR"}
+                disabled={status === "SYNCING"}
                 className={`
                     flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300
                     border relative overflow-hidden
@@ -280,9 +272,7 @@ export function SyncWidget() {
                             ? "border-blue-500/50 bg-blue-500/10 text-blue-400 cursor-default"
                             : status === "SUCCESS"
                                 ? "border-green-500/50 bg-green-500/10 text-green-400"
-                                : status === "COOLDOWN"
-                                    ? "border-transparent bg-[#131722] text-gray-600 cursor-not-allowed"
-                                    : "border-red-500/50 bg-red-500/10 text-red-400"
+                                : "border-red-500/50 bg-red-500/10 text-red-400"
                     }
                 `}
             >
@@ -315,12 +305,7 @@ export function SyncWidget() {
                     </>
                 )}
 
-                {status === "COOLDOWN" && (
-                    <>
-                        <Clock className="w-3.5 h-3.5 relative z-10" />
-                        <span className="relative z-10">Wait {formatTime(cooldownRemaining)}</span>
-                    </>
-                )}
+                {/* status === "COOLDOWN" removed */}
 
                 {status === "ERROR" && (
                     <span className="relative z-10">Sync Failed</span>
@@ -338,11 +323,7 @@ export function SyncWidget() {
                     loading...
                 </span>
             )}
-            {status === "COOLDOWN" && (
-                <span className="text-[10px] text-gray-500 pr-1 tabular-nums">
-                    cooling down...
-                </span>
-            )}
+            {/* status === "COOLDOWN" removed */}
         </div>
     );
 }

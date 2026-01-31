@@ -3,6 +3,8 @@ export interface HoldingItem {
     name: string;
     icon_url?: string | null;
     price: number;
+    price_usd: number;
+    currency?: string;
     balance: number;
     value_usd: number;
     change_24h?: number | null;

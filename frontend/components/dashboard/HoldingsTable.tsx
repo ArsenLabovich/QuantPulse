@@ -45,13 +45,10 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
                                     alt={row.symbol}
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
-                                        // Fallback to letter on error
-                                        e.currentTarget.style.display = 'none';
-                                        const parent = e.currentTarget.parentElement;
-                                        if (parent) {
-                                            const span = parent.querySelector('span');
-                                            if (span) span.classList.remove('hidden');
-                                        }
+                                        // Fallback to professional generic icon on error
+                                        e.currentTarget.src = "/icons/generic_asset.png";
+                                        // Prevents infinite loop if generic icon fails
+                                        e.currentTarget.onerror = null;
                                     }}
                                 />
                             ) : null}
@@ -65,14 +62,29 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
                 );
             },
         }),
-        columnHelper.accessor("price", {
+        columnHelper.accessor("price_usd", {
             header: "Price",
             cell: (info: any) => {
-                const val = info.getValue();
+                const priceUsd = info.getValue();
+                const row = info.row.original;
+                const isNotUsd = row.currency && row.currency !== 'USD';
+
+                const currencySymbols: Record<string, string> = {
+                    'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 'CHF': 'Fr'
+                };
+                const originalSymbol = currencySymbols[row.currency || 'USD'] || '$';
+
                 return (
-                    <span className="text-gray-300 font-medium text-sm">
-                        ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
-                    </span>
+                    <div className="flex flex-col">
+                        <span className="text-white font-semibold text-sm">
+                            ${priceUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </span>
+                        {isNotUsd && (
+                            <span className="text-xs text-gray-500 font-medium">
+                                {originalSymbol}{row.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </span>
+                        )}
+                    </div>
                 );
             },
         }),
@@ -97,7 +109,7 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
             },
         }),
         columnHelper.accessor("value_usd", {
-            header: "Value",
+            header: "Value (USD)",
             cell: (info: any) => {
                 const val = info.getValue();
                 return <span className="text-white font-bold text-sm min-w-[80px] inline-block text-right">
