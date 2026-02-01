@@ -35,4 +35,5 @@ export interface DashboardSummary {
     history: HistoryItem[];
     holdings: HoldingItem[];
     movers: Movers;
+    cash_value?: number;
 }

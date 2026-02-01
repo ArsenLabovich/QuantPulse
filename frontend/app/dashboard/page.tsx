@@ -5,10 +5,10 @@ import api from "@/lib/api";
 import { NetWorthCard } from "@/components/dashboard/NetWorthCard";
 import { AllocationChart } from "@/components/dashboard/AllocationChart";
 import { HistoryChart } from "@/components/dashboard/HistoryChart";
-import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
-import { MoversWidget } from "@/components/dashboard/MoversWidget";
+import { TopHoldingsWidget } from "@/components/dashboard/TopHoldingsWidget";
+import { StatsGrid } from "@/components/dashboard/StatsGrid";
+import { TreemapWidget } from "@/components/dashboard/TreemapWidget";
 import { useRefresh } from "@/context/RefreshContext";
-import { motion } from "framer-motion";
 import { DashboardSummary } from "@/types/dashboard";
 
 export default function DashboardPage() {
@@ -17,8 +17,7 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [historyRange, setHistoryRange] = useState("1d");
 
-    const fetchData = async (showLoading = true) => {
-        if (showLoading) setLoading(true);
+    const fetchData = async () => {
         try {
             const response = await api.get("/dashboard/summary");
             setSummary(response.data);
@@ -30,8 +29,7 @@ export default function DashboardPage() {
     };
 
     useEffect(() => {
-        // Initial load (show loading) or Refresh trigger (silent or animated)
-        fetchData(refreshKey === 0);
+        fetchData();
     }, [refreshKey]);
 
     // Placeholder data for initial skeleton
@@ -47,14 +45,8 @@ export default function DashboardPage() {
     const displayData = summary || skeletonData;
 
     return (
-        <motion.div
-            key={refreshKey}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="p-8 space-y-8"
-        >
-            <header className="flex justify-between items-start mb-8 relative z-20">
+        <div className="space-y-6">
+            <header className="flex justify-between items-start mb-6">
                 <div>
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent mb-2">
                         Dashboard
@@ -63,9 +55,10 @@ export default function DashboardPage() {
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                {/* Hero / Net Worth */}
-                <div className="md:col-span-1 h-[300px]">
+            {/* Row 1: Net Worth & Key Stats */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Net Worth (1 col) */}
+                <div className="lg:col-span-1 h-full min-h-[220px]">
                     <NetWorthCard
                         totalValue={displayData.net_worth}
                         dailyChange={displayData.daily_change}
@@ -73,17 +66,20 @@ export default function DashboardPage() {
                     />
                 </div>
 
-                {/* Allocation Donut */}
-                <div className="md:col-span-2 h-[300px]">
-                    <AllocationChart
-                        data={displayData.allocation}
+                {/* Stats Grid (2 cols) */}
+                <div className="lg:col-span-2">
+                    <StatsGrid
+                        movers={displayData.movers}
+                        allocation={displayData.allocation}
+                        holdings={displayData.holdings}
+                        cashValue={displayData.cash_value}
                         isLoading={loading}
                     />
                 </div>
             </div>
 
-            {/* History Chart */}
-            <div className="h-[400px] mb-8">
+            {/* Row 2: Performance History */}
+            <div className="h-[400px]">
                 <HistoryChart
                     data={displayData.history}
                     isLoading={loading}
@@ -92,22 +88,32 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* Movers & Holdings */}
-            <div>
-                <h2 className="text-xl font-bold text-white mb-4">Assets</h2>
-
-                {displayData.movers && (
-                    <MoversWidget
-                        gainer={displayData.movers.top_gainer}
-                        loser={displayData.movers.top_loser}
+            {/* Row 3: Composition (Treemap + Allocation) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[400px]">
+                {/* Treemap (2 cols) */}
+                <div className="lg:col-span-2 h-full">
+                    <TreemapWidget
+                        data={displayData.holdings}
+                        isLoading={loading}
                     />
-                )}
+                </div>
 
-                <HoldingsTable
+                {/* Allocation (1 col) */}
+                <div className="lg:col-span-1 h-full">
+                    <AllocationChart
+                        data={displayData.allocation}
+                        isLoading={loading}
+                    />
+                </div>
+            </div>
+
+            {/* Row 4: Top Holdings List */}
+            <div className="h-[400px]">
+                <TopHoldingsWidget
                     data={displayData.holdings}
                     isLoading={loading}
                 />
             </div>
-        </motion.div>
+        </div>
     );
 }

@@ -187,6 +187,7 @@ class DashboardSummary(BaseModel):
     history: List[HistoryItem]
     holdings: List[HoldingItem]
     movers: Movers
+    cash_value: Optional[float] = 0.0
 
 @router.get("/summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
@@ -201,6 +202,26 @@ async def get_dashboard_summary(
     )
     total_net_worth = result.scalar() or 0.0
     total_net_worth = float(total_net_worth)
+
+    # 1.1 Calculate Explicit Cash Value (Fiat + Stablecoins)
+    # List of known stablecoin symbols
+    STABLECOINS = ["USDT", "USDC", "DAI", "BUSD", "FDUSD", "USDE", "PYUSD", "GUSD", "USDP"]
+    
+    cash_result = await db.execute(
+        select(UnifiedAsset)
+        .where(
+            UnifiedAsset.user_id == current_user.id,
+        )
+    )
+    all_assets_for_cash = cash_result.scalars().all()
+    
+    cash_value = 0.0
+    for asset in all_assets_for_cash:
+        val = float(asset.usd_value or 0)
+        sym = asset.symbol.upper()
+        # Check if FIAT or Stablecoin
+        if asset.asset_type == AssetType.FIAT or sym in STABLECOINS:
+            cash_value += val
 
     # 2. Daily Change
     # Find snapshot from ~24h ago
@@ -348,7 +369,8 @@ async def get_dashboard_summary(
                 "weighted_change_sum": 0.0,
                 "price": price,
                 "currency": asset.currency or "USD",
-                "image_url": asset.image_url 
+                "image_url": asset.image_url,
+                "asset_type": asset.asset_type
             }
             
         group = holdings_map[symbol]
@@ -406,13 +428,25 @@ async def get_dashboard_summary(
     holdings.sort(key=lambda x: x.value_usd, reverse=True)
         
     # Movers
-    # Filter only assets with value_usd > 10 to avoid dust noise? Or just > 0.
-    # Let's filter > $1.00 USD
-    significant_holdings = [h for h in holdings if h.value_usd > 1.0]
-    # If user has only dust, just use everything
-    if not significant_holdings:
-        significant_holdings = holdings
-        
+    # Filter only assets with value_usd > 1.0 and ensure they are NOT FIAT.
+    # While we don't have asset_type in HoldingItem, we can infer it or checking raw_assets map.
+    # Since we built holdings from raw_assets, let's filter raw_assets first or use a map?
+    # But `holdings` is aggregated.
+    # Best way: Check if the holding came from a FIAT asset.
+    # Let's check `holdings_map`? We can add 'asset_type' to holdings_map!
+    
+    # ... (Wait, I need to add asset_type to holdings_map first to do this robustly) ...
+    # Let's assume we added it (I will do it in this edit).
+    
+    significant_holdings = [
+        h for h in holdings 
+        if h.value_usd > 1.0 
+        and holdings_map[h.symbol].get("asset_type") != AssetType.FIAT
+    ]
+    
+    # Wait, we need 'asset_type' in holdings_map to do this filter effectively.
+    # Let's revise the loop above first to include it.
+    
     sorted_by_change = sorted(significant_holdings, key=lambda x: x.change_24h or 0, reverse=True)
     
     movers = Movers()
@@ -439,7 +473,8 @@ async def get_dashboard_summary(
         allocation=allocation,
         history=history,
         holdings=holdings,
-        movers=movers
+        movers=movers,
+        cash_value=cash_value # Explicit cash
     )
 
 @router.get("/history", response_model=List[HistoryItem])

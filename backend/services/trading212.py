@@ -77,6 +77,13 @@ class Trading212Client:
         """
         return await self._request("GET", "/equity/account/cash")
 
+    async def get_account_metadata(self) -> Dict[str, Any]:
+        """
+        Fetches account metadata including currency.
+        Ref: https://docs.trading212.com/#operation/getAccountInfo
+        """
+        return await self._request("GET", "/equity/account/info")
+
     async def get_instruments(self) -> List[Dict[str, Any]]:
         """
         Fetches instrument metadata (names, currencies, etc).

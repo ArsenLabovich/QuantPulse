@@ -34,12 +34,7 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
     const chartData = data.filter(item => item.value > 0);
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col overflow-hidden outline-none"
-        >
+        <div className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col overflow-hidden outline-none">
             <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
 
             <div className="flex-1 w-full min-h-[250px] overflow-hidden outline-none">
@@ -83,6 +78,6 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
                     </PieChart>
                 </ResponsiveContainer>
             </div>
-        </motion.div>
+        </div>
     );
 }

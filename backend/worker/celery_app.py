@@ -14,9 +14,9 @@ celery_app = Celery(
 
 # Celery Beat Schedule
 celery_app.conf.beat_schedule = {
-    "global-sync-every-10-mins": {
+    "global-sync-every-1-min": {
         "task": "trigger_global_sync",
-        "schedule": crontab(minute='*/10'),  # Run at minute 0, 10, 20, 30, 40, 50
+        "schedule": crontab(minute='*'),  # Run every minute
     },
 }
 

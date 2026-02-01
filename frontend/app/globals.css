@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-inter);
 
   /* Trading212-style Palette */
   /* Trading212-style Palette - Deep Black */

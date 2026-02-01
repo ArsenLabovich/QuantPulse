@@ -9,6 +9,9 @@ interface MoversProps {
 export function MoversWidget({ gainer, loser }: MoversProps) {
     if (!gainer && !loser) return null;
 
+    const isGainerNeutral = gainer && Math.abs(gainer.change_24h || 0) < 0.005;
+    const isLoserNeutral = loser && Math.abs(loser.change_24h || 0) < 0.005;
+
     return (
         <div className="flex flex-col sm:flex-row justify-between gap-6 mb-8">
             {gainer ? (
@@ -30,13 +33,13 @@ export function MoversWidget({ gainer, loser }: MoversProps) {
                                 <span className={gainer.icon_url ? "hidden" : "block"}>{gainer.symbol[0]}</span>
                             </div>
                             <div className="absolute -bottom-1 -right-1 bg-[#131722] rounded-full p-1 ring-2 ring-[#1E222D] z-10">
-                                <TrendingUp className="w-3 h-3 text-[#00C805]" />
+                                <TrendingUp className={`w-3 h-3 ${isGainerNeutral ? "text-gray-500" : "text-[#00C805]"}`} />
                             </div>
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
                                 <span className="font-bold text-white text-lg truncate">{gainer.symbol}</span>
-                                <span className="text-[#00C805] text-sm font-bold bg-[#00C805]/10 px-2 py-0.5 rounded-full">
+                                <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${isGainerNeutral ? "text-gray-500 bg-white/5" : "text-[#00C805] bg-[#00C805]/10"}`}>
                                     +{gainer.change_24h?.toFixed(2)}%
                                 </span>
                             </div>
@@ -65,13 +68,13 @@ export function MoversWidget({ gainer, loser }: MoversProps) {
                                 <span className={loser.icon_url ? "hidden" : "block"}>{loser.symbol[0]}</span>
                             </div>
                             <div className="absolute -bottom-1 -right-1 bg-[#131722] rounded-full p-1 ring-2 ring-[#1E222D] z-10">
-                                <TrendingDown className="w-3 h-3 text-[#FF3B30]" />
+                                <TrendingDown className={`w-3 h-3 ${isLoserNeutral ? "text-gray-500" : "text-[#FF3B30]"}`} />
                             </div>
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
                                 <span className="font-bold text-white text-lg truncate">{loser.symbol}</span>
-                                <span className="text-[#FF3B30] text-sm font-bold bg-[#FF3B30]/10 px-2 py-0.5 rounded-full">
+                                <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${isLoserNeutral ? "text-gray-500 bg-white/5" : "text-[#FF3B30] bg-[#FF3B30]/10"}`}>
                                     {loser.change_24h?.toFixed(2)}%
                                 </span>
                             </div>

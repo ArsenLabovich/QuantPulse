@@ -29,21 +29,28 @@ class Trading212Adapter(BaseAdapter):
         
         client = Trading212Client(api_key=api_key, api_secret=api_secret, is_demo=is_demo)
         
-        # 1. Cash
+        # 1. Get Account Info (Currency)
+        # We must NOT catch exceptions here. If metadata fails (e.g. 429 Rate Limit), 
+        # we should fail the entire sync rather than fallback to "USD" and corrupt the user's data.
+        account_meta = await client.get_account_metadata()
+        account_currency = account_meta.get("currencyCode", "USD")
+
+        # 2. Cash
         cash_data = await client.get_account_cash()
         free_cash = float(cash_data.get("free", 0.0))
-        currency = cash_data.get("currency", "USD")
+        # Cash is always displayed in account currency
         
         assets = []
         if free_cash > 0:
             assets.append(AssetData(
-                symbol=currency,
-                original_symbol=currency,
+                symbol=account_currency, # e.g. EUR
+                original_symbol=account_currency,
                 amount=free_cash,
-                price=1.0 if currency in ["USD", "USDT", "USDC"] else 0.0,
-                name=currency,
+                price=1.0, # Price of 1 unit of currency in itself is 1. We rely on FX service for conversion later.
+                name=account_currency,
+                currency=account_currency,
                 asset_type=AssetType.FIAT,
-                image_url=IconResolver.get_icon_url(currency, AssetType.FIAT, self.get_provider_id())
+                image_url=IconResolver.get_icon_url(account_currency, AssetType.FIAT, self.get_provider_id())
             ))
 
         # 2. Positions

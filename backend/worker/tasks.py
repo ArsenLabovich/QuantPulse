@@ -72,26 +72,35 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
             last_sync_key = f"sync_last_time:{user_id}"
             
             # A. Check Lock (Is another task running?)
-            if redis_client.get(lock_key):
-                logger.warning(f"Sync already in progress for user {user_id}. Skipping.")
-                if task_instance:
-                    task_instance.update_state(state='SUCCESS', meta={'message': 'Skipped (Already Running)'})
-                return
-
-            # B. Check Recency (Did we just sync?)
-            # B. Check Recency (Disabled for testing)
-            # last_sync_ts = redis_client.get(last_sync_key)
-            # if last_sync_ts:
-            #     try:
-            #         time_since = time.time() - float(last_sync_ts)
-            #         if time_since < 20: # 20 seconds debounce
-            #             logger.info(f"Sync too recent ({time_since:.0f}s ago). Skipping redundant auto-sync.")
-            #             if task_instance:
-            #                 task_instance.update_state(state='SUCCESS', meta={'message': 'Skipped (Too Recent)'})
-            #             return
-            #     except:
-            #         pass
+            # A. Check Lock (Is another task running?)
+            # Instead of skipping immediately, we WAIT for the lock to be released.
+            # This ensures that "refresh" requests from the UI don't return "Success" 
+            # until the actual data update (running in another task) is complete.
+            wait_attempts = 0
+            while redis_client.get(lock_key):
+                if wait_attempts > 20: # Wait max 20 seconds (sync usually takes ~1-5s)
+                    logger.warning(f"Sync lock timeout for user {user_id}. Proceeding anyway (or failing).")
+                    break # Break to either fail or try to take lock
+                
+                if wait_attempts == 0:
+                     logger.info(f"Sync already in progress for user {user_id}. Waiting for completion...")
+                     if task_instance:
+                        task_instance.update_state(state='PROGRESS', meta={'message': 'Waiting for existing sync...'})
+                
+                await asyncio.sleep(1)
+                wait_attempts += 1
+                
+                # If lock is gone, we can return "Success" (assuming the other task finished successfully)
+                # But to be safe, we should probably re-check if we need to run?
+                # Actually, if we waited, it means the other task *just* finished. 
+                # So we can just return success, effectively "joining" the previous task.
             
+            if wait_attempts > 0 and wait_attempts <= 20:
+                 logger.info(f"Existing sync finished. Returning success for redundant task.")
+                 if task_instance:
+                    task_instance.update_state(state='SUCCESS', meta={'message': 'Synced (via parallel task)'})
+                 return
+
             # Acquire Lock (Expires in 50s to allow next 1m sync)
             redis_client.setex(lock_key, 50, "locked")
 
@@ -181,27 +190,33 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                 existing_snapshot = recent_snap_result.scalar_one_or_none()
                 
                 is_partial = current_assets_ints < total_active_ints
-                snapshot_data = {
-                    "asset_count": len(new_assets), 
-                    "source": "worker_sync", 
-                    "integrations_count": current_assets_ints,
-                    "total_integrations": total_active_ints,
-                    "is_partial": is_partial
-                }
-
-                if existing_snapshot:
-                    # Update existing instead of creating new
-                    existing_snapshot.total_value_usd = float(current_net_worth)
-                    existing_snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
-                    existing_snapshot.data = snapshot_data
+                
+                # Prevent saving partial snapshots which cause massive dips in history chart.
+                # Only save if we have data from ALL active integrations.
+                if is_partial:
+                    logger.info(f"Skipping portfolio snapshot: Partial data ({current_assets_ints}/{total_active_ints} integrations).")
                 else:
-                    # Create new
-                    snapshot = PortfolioSnapshot(
-                        user_id=integration.user_id,
-                        total_value_usd=float(current_net_worth),
-                        data=snapshot_data
-                    )
-                    db.add(snapshot)
+                    snapshot_data = {
+                        "asset_count": len(new_assets), 
+                        "source": "worker_sync", 
+                        "integrations_count": current_assets_ints,
+                        "total_integrations": total_active_ints,
+                        "is_partial": is_partial
+                    }
+
+                    if existing_snapshot:
+                        # Update existing instead of creating new
+                        existing_snapshot.total_value_usd = float(current_net_worth)
+                        existing_snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
+                        existing_snapshot.data = snapshot_data
+                    else:
+                        # Create new
+                        snapshot = PortfolioSnapshot(
+                            user_id=integration.user_id,
+                            total_value_usd=float(current_net_worth),
+                            data=snapshot_data
+                        )
+                        db.add(snapshot)
             
             await db.commit()
             if task_instance:
@@ -215,7 +230,7 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
         finally:
              # Release Lock
              if 'integration' in locals() and integration:
-                 redis_client.delete(f"sync_lock:{integration.user_id}")
+                 redis_client.delete(f"sync_lock:{integration.user_id}:{integration.id}")
              
              # Also update last sync time if successful? 
              # Only if we reached the end successfully.

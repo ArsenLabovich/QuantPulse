@@ -27,11 +27,7 @@ export function NetWorthCard({ totalValue, dailyChange, isLoading }: NetWorthCar
     }).format(totalValue);
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full relative overflow-hidden"
-        >
+        <div className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full relative overflow-hidden">
             <div className="flex items-center gap-3 mb-2">
                 <div className="w-10 h-10 rounded-lg bg-[#3978FF]/10 flex items-center justify-center">
                     <Wallet className="w-5 h-5 text-[#3978FF]" />
@@ -55,6 +51,6 @@ export function NetWorthCard({ totalValue, dailyChange, isLoading }: NetWorthCar
             <div className="absolute top-0 right-0 p-8 opacity-5">
                 <DollarSign className="w-32 h-32" />
             </div>
-        </motion.div>
+        </div>
     );
 }

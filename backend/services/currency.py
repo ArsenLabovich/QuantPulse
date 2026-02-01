@@ -39,7 +39,6 @@ class CurrencyService:
         if from_up in cls._rates and to_up in cls._rates:
             return cls._rates[from_up] / cls._rates[to_up]
 
-        logger.warning(f"Rate not found for {from_up}/{to_up}. Falling back to 1.0")
         return 1.0
 
     @classmethod

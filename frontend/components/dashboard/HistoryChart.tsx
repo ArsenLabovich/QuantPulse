@@ -89,12 +89,7 @@ export function HistoryChart({
     }
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col overflow-hidden outline-none"
-        >
+        <div className="bg-[#1E222D] rounded-xl p-6 border border-[#2A2E39] h-full flex flex-col overflow-hidden outline-none">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                 <h3 className="text-lg font-bold text-white">Portfolio History</h3>
                 <div className="flex flex-wrap gap-1 bg-[#2A2E39]/30 p-1 rounded-lg">
@@ -161,9 +156,11 @@ export function HistoryChart({
                             axisLine={false}
                             domain={['auto', 'auto']}
                             tickFormatter={(value) => {
-                                if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-                                if (value >= 1000) return `$${(value / 1000).toFixed(1)}k`;
-                                return `$${value.toFixed(2)}`;
+                                return new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: 'USD',
+                                    maximumFractionDigits: 0,
+                                }).format(value);
                             }}
                         />
                         <Tooltip
@@ -194,6 +191,6 @@ export function HistoryChart({
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
-        </motion.div>
+        </div>
     );
 }

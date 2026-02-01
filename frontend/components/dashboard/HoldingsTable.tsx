@@ -93,7 +93,17 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
             cell: (info: any) => {
                 const val = info.getValue();
                 if (val === null || val === undefined) return <span className="text-gray-500">-</span>;
-                const isPositive = val >= 0;
+
+                // Handle near-zero values (0.00%) as gray
+                if (Math.abs(val) < 0.005) {
+                    return (
+                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-white/5 text-gray-500">
+                            0.00%
+                        </span>
+                    );
+                }
+
+                const isPositive = val > 0;
                 return (
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${isPositive ? 'bg-[#00C805]/10 text-[#00C805]' : 'bg-[#FF3B30]/10 text-[#FF3B30]'}`}>
                         {isPositive ? "+" : ""}{val.toFixed(2)}%
@@ -129,6 +139,7 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
+        autoResetPageIndex: false, // Prevent page reset on data update
         initialState: {
             pagination: {
                 pageSize: 10,
