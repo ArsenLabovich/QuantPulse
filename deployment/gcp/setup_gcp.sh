@@ -26,12 +26,11 @@ else
     echo "✅ Docker already installed."
 fi
 
-# 2. Setup Firewall (UFW)
-echo "🛡️ Configuring Firewall..."
-sudo ufw allow ssh
-sudo ufw allow http
-sudo ufw allow https
-# sudo ufw enable # CAUTION: Can lock out ssh if not careful. GCP Firewall handles ingress mostly.
+# 2. Permissions & Firewall
+echo "🛡️ Configuring System..."
+# Add user to docker group
+sudo usermod -aG docker $USER
+echo "✅ Added $USER to docker group (Log out and back in to use 'docker' without sudo)"
 
 # 3. Configure Env
 echo "⚙️ Configuring Environment..."
@@ -61,4 +60,11 @@ sudo docker compose -f docker-compose.prod.yml up -d --build
 echo "---------------------------------------------------"
 echo "🎉 Deployment Complete!"
 echo "👉 App is running at: https://$DOMAIN"
+echo ""
+echo "⚠️ IMPORTANT: If the site does not load:"
+echo "1. Go to Google Cloud Console -> Compute Engine"
+echo "2. Click on your instance 'quantpulse-server'"
+echo "3. Click EDIT"
+echo "4. Scroll to Firewalls and check [x] Allow HTTP and [x] Allow HTTPS"
+echo "5. Click SAVE"
 echo "---------------------------------------------------"
