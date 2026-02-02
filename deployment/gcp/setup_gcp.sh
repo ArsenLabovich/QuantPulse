@@ -59,9 +59,50 @@ else
     echo "ℹ️ .env file already exists. Skipping generation to preserve passwords."
 fi
 
-# 4. Start Application
-echo "🚀 Launching Containers..."
-sudo docker compose -f docker-compose.prod.yml up -d --build
+# Check for --reset flag
+if [[ "$1" == "--reset" ]]; then
+    echo "⚠️  WARNING: FULL RESET INITIATED"
+    echo "This will delete all database data and regenerate keys."
+    read -p "Are you sure? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "🗑️  Removing containers and volumes..."
+        sudo docker compose -f docker-compose.prod.yml down -v
+        echo "🗑️  Removing .env file..."
+        rm -f .env
+    else
+        echo "❌ Reset cancelled."
+        exit 1
+    fi
+fi
+
+# 4. Start services
+echo "🚀 Starting services..."
+sudo docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+# 5. Wait for Database and Run Migrations
+echo "⏳ Waiting for Database to be ready..."
+sleep 10  # Initial startup delay
+
+MAX_RETRIES=30
+COUNT=0
+SUCCESS=0
+
+while [ $COUNT -lt $MAX_RETRIES ]; do
+    if sudo docker compose -f docker-compose.prod.yml exec backend poetry run alembic upgrade head; then
+        echo "✅ Database migrations applied successfully!"
+        SUCCESS=1
+        break
+    fi
+    echo "zzz Database not ready yet... retrying ($((COUNT+1))/$MAX_RETRIES)"
+    sleep 2
+    COUNT=$((COUNT+1))
+done
+
+if [ $SUCCESS -eq 0 ]; then
+    echo "❌ Failed to apply migrations. Check logs: sudo docker compose -f docker-compose.prod.yml logs backend"
+    exit 1
+fi
 
 echo "---------------------------------------------------"
 echo "🎉 Deployment Complete!"
