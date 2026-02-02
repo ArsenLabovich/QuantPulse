@@ -43,15 +43,20 @@ echo "🌍 Detected Public IP: $PUBLIC_IP"
 DOMAIN="quantpulse.${PUBLIC_IP}.nip.io"
 echo "🔗 Your Domain will be: https://$DOMAIN"
 
-# Create .env file
-cat > .env <<EOL
+# Create .env file only if it doesn't exist
+if [ ! -f .env ]; then
+    cat > .env <<EOL
 DOMAIN_NAME=$DOMAIN
 POSTGRES_USER=qp_user
 POSTGRES_PASSWORD=$(openssl rand -hex 12)
 POSTGRES_DB=quantpulse_db
+SECRET_KEY=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 EOL
-
-echo "✅ Generated .env file with secure passwords."
+    echo "✅ Generated new .env file."
+else
+    echo "ℹ️ .env file already exists. Skipping generation to preserve passwords."
+fi
 
 # 4. Start Application
 echo "🚀 Launching Containers..."
