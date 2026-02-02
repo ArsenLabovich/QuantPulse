@@ -11,7 +11,8 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
-    command: caddy reverse-proxy --from https://${DOMAIN_NAME} --to http://frontend:3000
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 
   # --- Frontend (Next.js) ---
   frontend:

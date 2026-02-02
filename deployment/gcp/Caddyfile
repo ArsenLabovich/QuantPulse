@@ -1,0 +1,15 @@
+{
+    email myemail@example.com
+}
+
+{$DOMAIN_NAME} {
+    # API Requests -> Backend
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # All other requests -> Frontend
+    handle /* {
+        reverse_proxy frontend:3000
+    }
+}
