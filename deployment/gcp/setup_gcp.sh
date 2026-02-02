@@ -32,6 +32,7 @@ echo "🛡️ Configuring System..."
 sudo usermod -aG docker $USER
 echo "✅ Added $USER to docker group (Log out and back in to use 'docker' without sudo)"
 
+
 # 3. Configure Env
 echo "⚙️ Configuring Environment..."
 
@@ -42,22 +43,6 @@ echo "🌍 Detected Public IP: $PUBLIC_IP"
 # Generate Domain (nip.io)
 DOMAIN="quantpulse.${PUBLIC_IP}.nip.io"
 echo "🔗 Your Domain will be: https://$DOMAIN"
-
-# Create .env file only if it doesn't exist
-if [ ! -f .env ]; then
-    cat > .env <<EOL
-DOMAIN_NAME=$DOMAIN
-POSTGRES_USER=qp_user
-POSTGRES_PASSWORD=$(openssl rand -hex 12)
-POSTGRES_DB=quantpulse_db
-SECRET_KEY=$(openssl rand -hex 32)
-# Generate a Fernet-compatible key (32 bytes, base64-encoded, url-safe)
-ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
-EOL
-    echo "✅ Generated new .env file."
-else
-    echo "ℹ️ .env file already exists. Skipping generation to preserve passwords."
-fi
 
 # Check for --reset flag
 if [[ "$1" == "--reset" ]]; then
@@ -74,6 +59,22 @@ if [[ "$1" == "--reset" ]]; then
         echo "❌ Reset cancelled."
         exit 1
     fi
+fi
+
+# Create .env file only if it doesn't exist
+if [ ! -f .env ]; then
+    cat > .env <<EOL
+DOMAIN_NAME=$DOMAIN
+POSTGRES_USER=qp_user
+POSTGRES_PASSWORD=$(openssl rand -hex 12)
+POSTGRES_DB=quantpulse_db
+SECRET_KEY=$(openssl rand -hex 32)
+# Generate a Fernet-compatible key (32 bytes, base64-encoded, url-safe)
+ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
+EOL
+    echo "✅ Generated new .env file."
+else
+    echo "ℹ️ .env file already exists. Skipping generation to preserve passwords."
 fi
 
 # 4. Start services
