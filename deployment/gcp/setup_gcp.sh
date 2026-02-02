@@ -51,7 +51,8 @@ POSTGRES_USER=qp_user
 POSTGRES_PASSWORD=$(openssl rand -hex 12)
 POSTGRES_DB=quantpulse_db
 SECRET_KEY=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
+# Generate a Fernet-compatible key (32 bytes, base64-encoded, url-safe)
+ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
 EOL
     echo "✅ Generated new .env file."
 else
