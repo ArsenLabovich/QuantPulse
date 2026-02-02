@@ -12,6 +12,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - ./Caddyfile:/etc/caddy/Caddyfile
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME}
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 
   # --- Frontend (Next.js) ---
