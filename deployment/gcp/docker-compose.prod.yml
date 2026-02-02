@@ -16,7 +16,7 @@ services:
   # --- Frontend (Next.js) ---
   frontend:
     build:
-      context: ../../frontend
+      context: ../../
       dockerfile: Dockerfile.prod
     restart: unless-stopped
     environment:
