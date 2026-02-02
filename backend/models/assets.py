@@ -44,3 +44,13 @@ class PortfolioAggregate(Base):
     symbol = Column(String, primary_key=True, index=True)
     total_amount = Column(Numeric(precision=30, scale=8), nullable=False)
     weighted_avg_price = Column(Numeric(precision=30, scale=8), nullable=True)
+
+class MarketPriceHistory(Base):
+    __tablename__ = "market_price_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol = Column(String, nullable=False, index=True)
+    provider_id = Column(String, nullable=False, index=True)
+    price = Column(Numeric(precision=30, scale=8), nullable=False)
+    currency = Column(String, nullable=False, default="USD")
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

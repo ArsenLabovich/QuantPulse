@@ -12,21 +12,38 @@ interface TreemapWidgetProps {
 const CustomizedContent = (props: any) => {
     const { root, depth, x, y, width, height, index, payload, name, value, change } = props;
 
-    // Filter out very small blocks to avoid clutter
-    if (width < 30 || height < 30) return null;
+    // Ignore root node (depth 1 is usually the root in a flat hierarchy in Recharts? Or depth 0?)
+    // In Recharts flat data, depth 1 are the items. depth 0 is root.
+    // If we see a huge value equals to total, it's likely root.
+    // Let's rely on depth.
+    // However, sometimes Recharts is tricky. Let's check if payload has symbol.
+    // Our items have payload.name = symbol. Root usually doesn't or has generic name.
+
+    // Safe check: if we are at depth < 1, return null (don't render root background over items)
+    // Actually, let's verify depth via console if needed, but standard is depth 1 for items.
+    // Also, our items are filtered to be > 10 USD.
+
+    // NOTE: Recharts Treemap with flat list:
+    // Root is depth 0. Items are depth 1.
+    if (depth < 1) return null;
 
     const isPositive = change >= 0;
-    // Calculate color based on change: Green for +, Red for -
-    // Simple logic: Base green/red with some opacity or variation could be better, but flat is safe for now.
-    // Let's use specific hexes to match our theme.
-    // We can use opacity to indicate magnitude if we wanted, but let's stick to simple Red/Green.
-    const fillColor = isPositive ? "#00C805" : "#FF3B30";
+    const isZero = Math.abs(change) < 0.005;
 
-    // Opacity based on magnitude? Let's just use a solid color with varying opacity
-    // Or simpler: Green background with opacity 0.2 and green border.
-    // Actually standard heatmap style is solid background.
-    // Let's go with: Dark background, Colored Text? No, Treemap usually fills the box.
-    // Design decision: Fill with low opacity color, solid border.
+    // Color Logic
+    const color = isZero ? "#9ca3af" : (isPositive ? "#00C805" : "#FF3B30"); // gray-400 for zero
+
+    // Font Size Logic
+    // Scale font based on width/height
+    // Allow going down to 4px for extremely small blocks (Nano mode)
+    const fontSize = Math.min(12, Math.max(4, width / 3.5));
+
+    // Aggressive threshold for symbol: show almost always if we have at least 8px
+    const showSymbol = width > 8 && height > 8;
+
+    // Only show extras if we have decent space
+    const showChange = height > 25 && width > 30;
+    const showValue = height > 35 && width > 40;
 
     return (
         <g>
@@ -36,30 +53,65 @@ const CustomizedContent = (props: any) => {
                 width={width}
                 height={height}
                 style={{
-                    fill: isPositive ? "#00C805" : "#FF3B30",
-                    fillOpacity: 0.15, // Subtle fill
-                    stroke: isPositive ? "#00C805" : "#FF3B30",
+                    fill: color,
+                    fillOpacity: 0.15,
+                    stroke: color,
                     strokeWidth: 1,
                     strokeOpacity: 0.3,
                 }}
-                rx={4}
-                ry={4}
+                rx={Math.min(4, width / 4)}
+                ry={Math.min(4, height / 4)}
             />
-            {width > 50 && height > 40 ? (
+            {showSymbol && (
                 <foreignObject x={x} y={y} width={width} height={height} style={{ overflow: 'hidden' }}>
-                    <div className="flex flex-col items-center justify-center h-full p-1 text-center select-none cursor-default">
-                        <span className="text-white font-bold text-xs truncate w-full px-1">{name}</span>
-                        <span className={`text-[10px] font-bold ${isPositive ? 'text-[#00C805]' : 'text-[#FF3B30]'}`}>
-                            {change > 0 ? "+" : ""}{change?.toFixed(2)}%
+                    <div className="flex flex-col items-center justify-center h-full p-[0.5px] text-center select-none cursor-default leading-none">
+                        <span
+                            className="text-white font-bold w-full block"
+                            style={{
+                                fontSize: `${fontSize}px`,
+                                lineHeight: '1',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'clip' // No ellipsis (...)
+                            }}
+                            title={name}
+                        >
+                            {name}
                         </span>
-                        {height > 60 && (
-                            <span className="text-[10px] text-gray-500 mt-0.5">
-                                ${(value / 1000).toFixed(1)}k
+
+                        {showChange && (
+                            <span
+                                className="font-bold mt-[1px]"
+                                style={{
+                                    fontSize: `${Math.max(6, fontSize - 2)}px`,
+                                    lineHeight: '1',
+                                    color: color,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'clip'
+                                }}
+                            >
+                                {!isZero && (change > 0 ? "+" : "")}{change ? change.toFixed(1) : "0.0"}%
+                            </span>
+                        )}
+
+                        {showValue && (
+                            <span
+                                className="text-gray-500 mt-[1px]"
+                                style={{
+                                    fontSize: `${Math.max(6, fontSize - 2)}px`,
+                                    lineHeight: '1',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'clip'
+                                }}
+                            >
+                                ${(value / (value >= 1000 ? 1000 : 1)).toFixed(value >= 1000 ? 1 : 0)}{value >= 1000 ? 'k' : ''}
                             </span>
                         )}
                     </div>
                 </foreignObject>
-            ) : null}
+            )}
         </g>
     );
 };
@@ -105,8 +157,13 @@ export function TreemapWidget({ data, isLoading }: TreemapWidgetProps) {
                                         <div className="bg-[#131722] border border-[#2A2E39] p-3 rounded-lg shadow-xl">
                                             <p className="font-bold text-white">{d.name}</p>
                                             <p className="text-gray-400 text-xs">Value: ${d.value.toLocaleString()}</p>
-                                            <p className={`text-xs font-bold ${d.change >= 0 ? 'text-[#00C805]' : 'text-[#FF3B30]'}`}>
-                                                Change: {d.change > 0 ? "+" : ""}{d.change.toFixed(2)}%
+                                            <p className={`text-xs font-bold ${Math.abs(d.change) < 0.005
+                                                ? 'text-gray-400'
+                                                : d.change > 0
+                                                    ? 'text-[#00C805]'
+                                                    : 'text-[#FF3B30]'
+                                                }`}>
+                                                Change: {Math.abs(d.change) >= 0.005 && d.change > 0 ? "+" : ""}{d.change.toFixed(2)}%
                                             </p>
                                         </div>
                                     );

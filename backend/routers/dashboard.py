@@ -223,39 +223,34 @@ async def get_dashboard_summary(
         if asset.asset_type == AssetType.FIAT or sym in STABLECOINS:
             cash_value += val
 
-    # 2. Daily Change
-    # Find snapshot from ~24h ago
-    yesterday = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    # 2. Daily Change (Rolling 24h Window)
+    # Definition: (Current Value - Oldest Value within last 24h) / Oldest Value
     
-    # Get the snapshot closest to 24h ago
-    # For now, let's just get the latest snapshot BEFORE yesterday? 
-    # Or just get the first snapshot available if history is short.
-    # Logic: Get latest snapshot. If total_net_worth is live, compare with latest-1?
-    # Actually, let's look for a snapshot created < 24h ago but > 48h ago?
-    # Simple logic: Compare with the snapshot that is closest to "24h ago".
+    one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
     
-    # Let's simple it down: Get the MOST RECENT snapshot (if we assume live value is newer) 
-    # No, live value IS the most recent. We need previous day.
-    
+    # Fetch the OLDEST snapshot that is still within the 24h window
     history_result = await db.execute(
         select(PortfolioSnapshot)
         .where(
             PortfolioSnapshot.user_id == current_user.id,
-            PortfolioSnapshot.timestamp <= yesterday
+            PortfolioSnapshot.timestamp >= one_day_ago 
         )
-        .order_by(desc(PortfolioSnapshot.timestamp))
+        .order_by(PortfolioSnapshot.timestamp.asc()) # Oldest first
         .limit(1)
     )
-    prev_snapshot = history_result.scalar_one_or_none()
+    start_snapshot = history_result.scalar_one_or_none()
     
     daily_change = 0.0
-    if prev_snapshot and float(prev_snapshot.total_value_usd) > 0:
-        prev_val = float(prev_snapshot.total_value_usd)
-        daily_change = ((total_net_worth - prev_val) / prev_val) * 100
+    
+    if start_snapshot:
+        start_val = float(start_snapshot.total_value_usd)
+        if start_val > 0:
+            # Compare current live net worth vs the start of the 24h window
+            daily_change = ((total_net_worth - start_val) / start_val) * 100
     else:
-        # Fallback: if no old snapshot, compare with earliest available snapshot?
-        # Or just 0.
-        pass
+        # If no snapshots in the last 24h, change is 0% (or debatable, but strictly following "within 24h")
+        # To avoid confusion for new users, 0% is safe.
+        daily_change = 0.0
 
     # 3. Allocation
     # Group by Name (if available) or Symbol, order by Value DESC

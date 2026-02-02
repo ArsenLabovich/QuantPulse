@@ -27,12 +27,12 @@ export function TopHoldingsWidget({ data, isLoading }: TopHoldingsWidgetProps) {
                         {data.length} Assets
                     </span>
                 </h3>
-                <Link href="/portfolio" className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center transition-colors">
+                <Link href="/dashboard/portfolio" className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center transition-colors">
                     View All <ArrowRight className="w-3 h-3 ml-1" />
                 </Link>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex-1">
                 {top5.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-40 text-gray-500 text-sm">
                         No assets found.
@@ -67,9 +67,13 @@ export function TopHoldingsWidget({ data, isLoading }: TopHoldingsWidgetProps) {
                                     <p className="text-sm font-bold text-white">
                                         ${asset.value_usd.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </p>
-                                    <p className={`text-xs font-bold ${(asset.change_24h || 0) >= 0 ? 'text-[#00C805]' : 'text-[#FF3B30]'
+                                    <p className={`text-xs font-bold ${Math.abs(asset.change_24h || 0) < 0.005
+                                            ? 'text-gray-400'
+                                            : (asset.change_24h || 0) > 0
+                                                ? 'text-[#00C805]'
+                                                : 'text-[#FF3B30]'
                                         }`}>
-                                        {(asset.change_24h || 0) > 0 ? "+" : ""}
+                                        {Math.abs(asset.change_24h || 0) >= 0.005 && (asset.change_24h || 0) > 0 ? "+" : ""}
                                         {(asset.change_24h || 0).toFixed(2)}%
                                     </p>
                                 </div>
@@ -77,11 +81,6 @@ export function TopHoldingsWidget({ data, isLoading }: TopHoldingsWidgetProps) {
                         ))}
                     </div>
                 )}
-            </div>
-            <div className="p-3 bg-[#1E222D]/50 border-t border-[#2A2E39] text-center">
-                <Link href="/portfolio" className="text-xs text-gray-500 hover:text-white transition-colors">
-                    Show full portfolio
-                </Link>
             </div>
         </div>
     );

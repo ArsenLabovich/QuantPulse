@@ -20,6 +20,16 @@ export function NetWorthCard({ totalValue, dailyChange, isLoading }: NetWorthCar
     }
 
     const isPositive = dailyChange >= 0;
+    const isZero = Math.abs(dailyChange) < 0.01;
+
+    // Determine color: Gray if ~0%, otherwise Green/Red
+    const colorClass = isZero ? "text-gray-400" : (isPositive ? 'text-[#00C805]' : 'text-[#FF3B30]');
+
+    // Determine Icon: No icon (or dash?) if zero, otherwise TrendingUp/Down
+    // We can just keep TrendingUp for 0 or hide it? Let's hide icon if 0, or show a neutral dash?
+    // User didn't specify icon behavior, just color. I'll keep default arrow or maybe specific logic.
+    // Let's stick effectively to "Flat" if zero.
+
     const formattedValue = new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -40,10 +50,11 @@ export function NetWorthCard({ totalValue, dailyChange, isLoading }: NetWorthCar
                     {formattedValue}
                 </div>
 
-                <div className={`flex items-center mt-2 gap-2 text-sm font-medium ${isPositive ? 'text-[#00C805]' : 'text-[#FF3B30]'}`}>
-                    {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    <span>{Math.abs(dailyChange)}%</span>
-                    <span className="text-[#5E626B] font-normal">vs yesterday</span>
+                <div className={`flex items-center mt-2 gap-2 text-sm font-medium ${colorClass}`}>
+                    {!isZero && (isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />)}
+                    {isZero && <span className="text-lg leading-none">~</span>} {/* Tilde or dash for zero? */}
+                    <span>{Math.abs(dailyChange).toFixed(2)}%</span>
+                    <span className="text-[#5E626B] font-normal">Last 24h</span>
                 </div>
             </div>
 

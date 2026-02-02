@@ -62,15 +62,15 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
                             formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']}
                         />
                         <Legend
-                            layout="vertical"
-                            verticalAlign="middle"
-                            align="right"
-                            wrapperStyle={{ fontSize: '12px' }}
+                            verticalAlign="bottom"
+                            align="left"
+                            layout="horizontal"
+                            wrapperStyle={{ paddingTop: "20px", fontSize: '10px' }}
                             formatter={(value, entry: any) => {
                                 const item = chartData.find(i => i.name === value);
                                 return (
-                                    <span className="text-[#C0C4CC] ml-2">
-                                        {value} <span className="text-[#5E626B] ml-1">({item?.percentage}%)</span>
+                                    <span className="text-[#C0C4CC] ml-1 mr-2">
+                                        {value} <span className="text-[#5E626B]">({item?.percentage}%)</span>
                                     </span>
                                 );
                             }}

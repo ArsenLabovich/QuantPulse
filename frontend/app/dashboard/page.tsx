@@ -108,7 +108,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 4: Top Holdings List */}
-            <div className="h-[400px]">
+            <div>
                 <TopHoldingsWidget
                     data={displayData.holdings}
                     isLoading={loading}

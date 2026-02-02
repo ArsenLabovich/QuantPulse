@@ -140,7 +140,15 @@ export function StatsGrid({ movers, allocation, holdings, cashValue, isLoading }
                         <div className="flex items-center space-x-4">
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${stat.bgColor} ${stat.color} relative overflow-hidden`}>
                                 {iconUrl ? (
-                                    <img src={iconUrl} alt={symbol} className="w-full h-full object-cover" />
+                                    <img
+                                        src={iconUrl}
+                                        alt={symbol}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            e.currentTarget.src = "/icons/generic_asset.png";
+                                            e.currentTarget.onerror = null;
+                                        }}
+                                    />
                                 ) : (
                                     <Icon className="w-6 h-6" />
                                 )}

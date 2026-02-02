@@ -18,6 +18,10 @@ celery_app.conf.beat_schedule = {
         "task": "trigger_global_sync",
         "schedule": crontab(minute='*'),  # Run every minute
     },
+    "cleanup-price-history-daily": {
+        "task": "cleanup_price_history",
+        "schedule": crontab(hour=3, minute=0),  # Run daily at 3:00 AM
+    },
 }
 
 celery_app.conf.update(

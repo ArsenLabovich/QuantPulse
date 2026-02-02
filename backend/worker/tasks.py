@@ -28,6 +28,7 @@ from models.integration import Integration, ProviderID
 from models.user import User
 from core.security.encryption import encryption_service
 from services.currency import currency_service
+from services.price_service import PriceTrackingService
 
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,17 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                 rate = await currency_service.get_rate(ad.currency, "USD")
                 usd_value = float(ad.amount) * float(ad.price) * rate
                 total_portfolio_value += usd_value
+                
+                # --- PRICE HISTORY & CHANGE CALCULATION ---
+                # Record the price
+                await PriceTrackingService.record_price(db, ad.symbol, integration.provider_id, float(ad.price), ad.currency)
+                
+                # Calculate the 24h change using moving window
+                calculated_change = await PriceTrackingService.calculate_24h_change(db, ad.symbol, integration.provider_id, float(ad.price))
+                
+                # Use calculated change. 
+                # Note: Currently we override whatever adapter sent (even if valid) to ensure consistency across providers as per plan.
+                final_change_24h = calculated_change
 
                 asset = UnifiedAsset(
                     user_id=integration.user_id,
@@ -145,7 +157,7 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                     amount=ad.amount,
                     currency=ad.currency,
                     current_price=ad.price, 
-                    change_24h=ad.change_24h,
+                    change_24h=final_change_24h,
                     usd_value=usd_value,
                     image_url=ad.image_url
                 )
@@ -156,69 +168,95 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                      task_instance.update_state(state='PROGRESS', meta={'current': 90, 'total': 100, 'stage': 'SAVING', 'message': 'Saving to database...'})
                 db.add_all(new_assets)
                 
-            # 5. Create Portfolio Snapshot (Deduplicated)
-            # Calculate Total Net Worth and Integration Completeness
-            active_ints_result = await db.execute(
-                select(func.count(Integration.id)).where(Integration.user_id == integration.user_id, Integration.is_active == True)
-            )
-            total_active_ints = active_ints_result.scalar() or 0
+            # 5. Create Portfolio Snapshot (Deduplicated & Synchronized)
+            # Use a Per-User Snapshot Lock to prevent race conditions when multiple integrations sync
+            snapshot_lock_key = f"snapshot_lock:{integration.user_id}"
             
-            assets_ints_result = await db.execute(
-                select(func.count(func.distinct(UnifiedAsset.integration_id)))
-                .where(UnifiedAsset.user_id == integration.user_id)
-            )
-            current_assets_ints = assets_ints_result.scalar() or 0
+            # A. Wait for Snapshot Lock (If another integration is already snapshotting)
+            wait_attempts = 0
+            while redis_client.get(snapshot_lock_key):
+                if wait_attempts > 20: # Max 20s wait
+                    logger.warning(f"Snapshot lock timeout for user {integration.user_id}. Proceeding with risk of duplicates.")
+                    break
+                
+                if wait_attempts == 0:
+                    logger.info(f"Another integration is currently snapshotting for user {integration.user_id}. Waiting...")
+                
+                await asyncio.sleep(1)
+                wait_attempts += 1
 
-            current_net_worth_result = await db.execute(
-                select(func.sum(UnifiedAsset.usd_value))
-                .where(UnifiedAsset.user_id == integration.user_id)
-            )
-            current_net_worth = current_net_worth_result.scalar() or 0.0
-            
-            if current_net_worth >= 0:
-                # Check for a very recent snapshot (last 45 seconds) to avoid spam from multiple integrations
-                recent_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=45)
-                recent_snap_result = await db.execute(
-                    select(PortfolioSnapshot)
-                    .where(
-                        PortfolioSnapshot.user_id == integration.user_id,
-                        PortfolioSnapshot.timestamp >= recent_cutoff
-                    )
-                    .order_by(PortfolioSnapshot.timestamp.desc())
-                    .limit(1)
+            # B. Acquire Snapshot Lock (Expires in 30s)
+            redis_client.setex(snapshot_lock_key, 30, "locked")
+
+            try:
+                # Calculate Total Net Worth and Integration Completeness
+                active_ints_result = await db.execute(
+                    select(func.count(Integration.id)).where(Integration.user_id == integration.user_id, Integration.is_active == True)
                 )
-                existing_snapshot = recent_snap_result.scalar_one_or_none()
+                total_active_ints = active_ints_result.scalar() or 0
                 
-                is_partial = current_assets_ints < total_active_ints
-                
-                # Prevent saving partial snapshots which cause massive dips in history chart.
-                # Only save if we have data from ALL active integrations.
-                if is_partial:
-                    logger.info(f"Skipping portfolio snapshot: Partial data ({current_assets_ints}/{total_active_ints} integrations).")
-                else:
-                    snapshot_data = {
-                        "asset_count": len(new_assets), 
-                        "source": "worker_sync", 
-                        "integrations_count": current_assets_ints,
-                        "total_integrations": total_active_ints,
-                        "is_partial": is_partial
-                    }
+                assets_ints_result = await db.execute(
+                    select(func.count(func.distinct(UnifiedAsset.integration_id)))
+                    .where(UnifiedAsset.user_id == integration.user_id)
+                )
+                current_assets_ints = assets_ints_result.scalar() or 0
 
-                    if existing_snapshot:
-                        # Update existing instead of creating new
-                        existing_snapshot.total_value_usd = float(current_net_worth)
-                        existing_snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
-                        existing_snapshot.data = snapshot_data
-                    else:
-                        # Create new
-                        snapshot = PortfolioSnapshot(
-                            user_id=integration.user_id,
-                            total_value_usd=float(current_net_worth),
-                            data=snapshot_data
+                current_net_worth_result = await db.execute(
+                    select(func.sum(UnifiedAsset.usd_value))
+                    .where(UnifiedAsset.user_id == integration.user_id)
+                )
+                current_net_worth = current_net_worth_result.scalar() or 0.0
+                
+                if current_net_worth >= 0:
+                    # Check for a very recent snapshot (last 45 seconds) to avoid spam from multiple integrations
+                    recent_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=45)
+                    recent_snap_result = await db.execute(
+                        select(PortfolioSnapshot)
+                        .where(
+                            PortfolioSnapshot.user_id == integration.user_id,
+                            PortfolioSnapshot.timestamp >= recent_cutoff
                         )
-                        db.add(snapshot)
+                        .order_by(PortfolioSnapshot.timestamp.desc())
+                        .limit(1)
+                    )
+                    existing_snapshot = recent_snap_result.scalar_one_or_none()
+                    
+                    is_partial = current_assets_ints < total_active_ints
+                    
+                    # Prevent saving partial snapshots which cause massive dips in history chart.
+                    # Only save if we have data from ALL active integrations.
+                    if is_partial:
+                        logger.info(f"Skipping portfolio snapshot: Partial data ({current_assets_ints}/{total_active_ints} integrations).")
+                    else:
+                        snapshot_data = {
+                            "asset_count": len(new_assets), 
+                            "source": "worker_sync", 
+                            "integrations_count": current_assets_ints,
+                            "total_integrations": total_active_ints,
+                            "is_partial": is_partial
+                        }
+
+                        if existing_snapshot:
+                            # Update existing instead of creating new
+                            logger.info(f"Updating existing snapshot for user {integration.user_id}")
+                            existing_snapshot.total_value_usd = float(current_net_worth)
+                            existing_snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
+                            existing_snapshot.data = snapshot_data
+                        else:
+                            # Create new
+                            logger.info(f"Creating new portfolio snapshot for user {integration.user_id}")
+                            snapshot = PortfolioSnapshot(
+                                user_id=integration.user_id,
+                                total_value_usd=float(current_net_worth),
+                                data=snapshot_data
+                            )
+                            db.add(snapshot)
+                
+                await db.commit()
             
-            await db.commit()
+            finally:
+                # C. Release Snapshot Lock
+                redis_client.delete(snapshot_lock_key)
             if task_instance:
                 task_instance.update_state(state='PROGRESS', meta={'current': 100, 'total': 100, 'stage': 'DONE', 'message': 'Sync complete'})
             # Update Last Sync Time in Redis (for frontend & debounce)
@@ -284,3 +322,25 @@ def trigger_global_sync():
         await local_engine.dispose()
                 
     asyncio.run(dispatch_all())
+
+@celery_app.task(name="cleanup_price_history")
+def cleanup_price_history():
+    """
+    Scheduled task to remove market price history older than 48 hours.
+    """
+    logger.info("🧹 Starting price history cleanup...")
+    
+    from sqlalchemy import delete
+    from models.assets import MarketPriceHistory
+    
+    async def run_cleanup():
+        local_engine = create_async_engine(DATABASE_URL, echo=False)
+        async with local_engine.begin() as conn:
+             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)
+             result = await conn.execute(
+                 delete(MarketPriceHistory).where(MarketPriceHistory.timestamp < cutoff)
+             )
+             logger.info(f"Deleted {result.rowcount} old price history records.")
+        await local_engine.dispose()
+
+    asyncio.run(run_cleanup())
