@@ -25,10 +25,9 @@ def upgrade() -> None:
     # But since prompts indicated it IS missing, we add it.
     op.add_column('unified_assets', sa.Column('current_price', sa.Numeric(precision=30, scale=8), nullable=True))
 
-    # 2. Update ProviderID Enum (Freedom24)
-    # We do this inside a transaction block for Postgres
-    with op.get_context().autocommit_block():
-        op.execute("ALTER TYPE providerid ADD VALUE IF NOT EXISTS 'freedom24'")
+    # 2. Update ProviderID Enum (Freedom24) - REMOVED
+    # Only fixing the critical missing column for prod
+    pass
 
 
 def downgrade() -> None:
