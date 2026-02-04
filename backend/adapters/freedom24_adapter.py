@@ -8,6 +8,7 @@ import logging
 from tradernet import TraderNetAPI
 from adapters.base import BaseAdapter, AssetData
 from models.assets import AssetType
+from services.icons import IconResolver
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,20 @@ class Freedom24Adapter(BaseAdapter):
         # but here we are in an async method.
         return await self._do_fetch(credentials)
 
+    def _normalize_ticker(self, ticker: str) -> str:
+        """
+        Strips common market suffixes to ensure consistent asset identification.
+        Example: 'RGTI.US' -> 'RGTI', 'ORA.EU' -> 'ORA'
+        """
+        suffixes = ['.US', '.EU', '.DE', '.FR', '.UK']
+        clean_ticker = ticker
+        # Use upper for case-insensitive check if needed, but suffixes are usually upper
+        for suffix in suffixes:
+            if clean_ticker.endswith(suffix):
+                clean_ticker = clean_ticker[:-len(suffix)]
+                break
+        return clean_ticker
+
     async def _do_fetch(self, credentials: Dict[str, Any]) -> List[AssetData]:
         assets_list = []
         
@@ -125,15 +140,25 @@ class Freedom24Adapter(BaseAdapter):
                 if not ticker:
                     continue
 
+                # Normalize the ticker (e.g. RGTI.US -> RGTI)
+                clean_ticker = self._normalize_ticker(ticker)
+
                 assets_list.append(AssetData(
-                    symbol=ticker,
+                    symbol=clean_ticker,
                     original_symbol=ticker,
                     amount=quantity,
                     price=market_price,
                     currency=currency,
-                    name=name or ticker,
+                    name=name or clean_ticker, # Use cleaned ticker as fallback name
                     asset_type=AssetType.STOCK,
-                    change_24h=0.0
+                    change_24h=0.0,
+                    image_url=IconResolver.get_icon_url(
+                        symbol=clean_ticker,
+                        asset_type=AssetType.STOCK,
+                        provider_id=self.get_provider_id(),
+                        original_ticker=ticker,
+                        asset_name=name
+                    )
                 ))
 
             # 2. Parse Cash Accounts

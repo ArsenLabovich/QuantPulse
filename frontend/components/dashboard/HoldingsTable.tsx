@@ -49,6 +49,11 @@ function aggregateBySymbol(items: DetailedHoldingItem[]): DetailedHoldingItem[] 
             existing.change_24h = newChange;
             // Weighted avg price
             existing.price_usd = totalBal > 0 ? totalVal / totalBal : existing.price_usd;
+
+            // Fix: If existing item has no icon but new one does, update it
+            if (!existing.icon_url && item.icon_url) {
+                existing.icon_url = item.icon_url;
+            }
         }
     }
     return Array.from(map.values());
