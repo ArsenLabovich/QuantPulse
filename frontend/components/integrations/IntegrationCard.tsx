@@ -31,6 +31,11 @@ export function IntegrationCard({ id, name, provider, isActive, onDelete }: Inte
                         <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
+                    ) : provider === 'freedom24' ? (
+                        <svg viewBox="0 0 24 24" className="w-8 h-8" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
+                            <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
+                        </svg>
                     ) : (
                         <span className="font-bold text-xl">{provider[0]?.toUpperCase()}</span>
                     )}

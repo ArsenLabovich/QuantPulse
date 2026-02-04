@@ -53,7 +53,7 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                 logger.error(f"Integration {integration_id} not found")
                 return
 
-            if integration.provider_id not in [ProviderID.binance, ProviderID.trading212]:
+            if integration.provider_id not in [ProviderID.binance, ProviderID.trading212, ProviderID.freedom24]:
                 logger.warning(f"Provider {integration.provider_id} not supported for sync yet")
                 return
             

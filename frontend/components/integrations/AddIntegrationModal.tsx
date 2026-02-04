@@ -76,6 +76,13 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
             } else if (isSubmit) {
                 errors.apiKey = ["API Key is required"];
             }
+        } else if (selectedProvider === "freedom24") {
+            if (!formData.apiKey.trim() && isSubmit) {
+                errors.apiKey = ["API Key (Public Key) is required"];
+            }
+            if (!formData.apiSecret.trim() && isSubmit) {
+                errors.apiSecret = ["Secret Key (Private Key) is required"];
+            }
         }
         return Object.keys(errors).length > 0 ? errors : null;
     };
@@ -160,11 +167,19 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                     <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
+                                ) : selectedProvider === 'freedom24' ? (
+                                    <svg viewBox="0 0 24 24" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
+                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
+                                    </svg>
                                 ) : null}
                             </div>
                         )}
                         <h2 className="text-lg font-semibold text-white">
-                            {step === 1 ? "Select Exchange" : selectedProvider === 'binance' ? "Configure Binance" : "Configure Trading 212"}
+                            {step === 1 ? "Select Exchange" :
+                                selectedProvider === 'binance' ? "Configure Binance" :
+                                    selectedProvider === 'trading212' ? "Configure Trading 212" :
+                                        selectedProvider === 'freedom24' ? "Configure Freedom24" : "Configure Integration"}
                         </h2>
                     </div>
                     <div className="flex items-center gap-3">
@@ -273,6 +288,23 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                     Active
                                 </div>
                             </button>
+
+                            <button
+                                onClick={() => handleProviderSelect("freedom24")}
+                                className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
+                            >
+                                <div className="w-12 h-12 flex items-center justify-center mb-2">
+                                    <svg viewBox="0 0 24 24" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
+                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
+                                    </svg>
+                                </div>
+                                <span className="text-white font-medium">Freedom24</span>
+                                <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    Active
+                                </div>
+                            </button>
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
@@ -358,10 +390,11 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
 
 
 
-                            {(selectedProvider === 'binance' || selectedProvider === 'trading212') && (
+                            {(selectedProvider === 'binance' || selectedProvider === 'trading212' || selectedProvider === 'freedom24') && (
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-[#909399]">
-                                        {selectedProvider === 'trading212' ? 'API Secret / Private Key' : 'API Secret'}
+                                        {selectedProvider === 'trading212' ? 'API Secret / Private Key' :
+                                            selectedProvider === 'freedom24' ? 'Secret Key (Private Key)' : 'API Secret'}
                                     </label>
                                     <input
                                         type="password"
