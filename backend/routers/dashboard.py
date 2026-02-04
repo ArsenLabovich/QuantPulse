@@ -3,11 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from typing import List, Optional
 import datetime
+import uuid
 
 from core.database import get_db
 from models.user import User
 from models.integration import Integration
-from models.assets import UnifiedAsset, PortfolioSnapshot, AssetType
+from models.assets import UnifiedAsset, PortfolioSnapshot, AssetType, MarketPriceHistory
 from services.icons import IconResolver
 from core.deps import get_current_user
 from worker.tasks import sync_integration_data
@@ -175,6 +176,12 @@ class HoldingItem(BaseModel):
     balance: float
     value_usd: float
     change_24h: Optional[float] = 0.0
+
+class DetailedHoldingItem(HoldingItem):
+    integration_id: uuid.UUID
+    integration_name: str
+    provider_id: str
+    asset_type: str
 
 class Movers(BaseModel):
     top_gainer: Optional[HoldingItem] = None
@@ -555,4 +562,93 @@ async def get_dashboard_assets(
     )
     assets = assets_result.scalars().all()
     return assets
+
+@router.get("/holdings", response_model=List[DetailedHoldingItem])
+async def get_detailed_holdings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns granular list of assets (non-aggregated) with their integration source.
+    """
+    # Join UnifiedAsset with Integration to get provider details
+    query = (
+        select(UnifiedAsset, Integration.name, Integration.provider_id)
+        .join(Integration, UnifiedAsset.integration_id == Integration.id)
+        .where(UnifiedAsset.user_id == current_user.id)
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    detailed_holdings = []
+    
+    for asset, int_name, provider_id in rows:
+        # Convert numeric to float
+        price_val = float(asset.current_price or 0)
+        amount_val = float(asset.amount)
+        usd_val = float(asset.usd_value or 0)
+        
+        # Calculate price_usd (derived)
+        price_usd = 0.0
+        if amount_val > 0:
+            price_usd = usd_val / amount_val
+        elif price_val > 0 and asset.currency == "USD": 
+            price_usd = price_val
+            
+        detailed_holdings.append(DetailedHoldingItem(
+            symbol=asset.symbol,
+            name=asset.name or asset.symbol,
+            icon_url=asset.image_url, 
+            price=price_val,
+            price_usd=price_usd,
+            currency=asset.currency,
+            balance=amount_val,
+            value_usd=usd_val,
+            change_24h=float(asset.change_24h or 0),
+            # Detailed extra fields
+            integration_id=asset.integration_id,
+            integration_name=int_name,
+            provider_id=str(provider_id.value) if hasattr(provider_id, 'value') else str(provider_id),
+            asset_type=str(asset.asset_type.value) if hasattr(asset.asset_type, 'value') else str(asset.asset_type)
+        ))
+        
+    return detailed_holdings
+
+
+@router.get("/history/{symbol}")
+async def get_asset_history(
+    symbol: str,
+    range: str = "24h",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns price history for a specific asset (symbol).
+    """
+    # Determine start time
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if range == "24h":
+         start_time = now - datetime.timedelta(hours=24)
+    elif range == "1w":
+         start_time = now - datetime.timedelta(days=7)
+    else:
+         start_time = now - datetime.timedelta(hours=24)
+         
+    query = (
+        select(MarketPriceHistory)
+        .where(
+            MarketPriceHistory.symbol == symbol,
+            MarketPriceHistory.timestamp >= start_time
+        )
+        .order_by(MarketPriceHistory.timestamp.asc())
+    )
+    
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    
+    return [
+        {"date": r.timestamp.isoformat(), "value": float(r.price)}
+        for r in rows
+    ]
 

@@ -4,18 +4,18 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { HoldingsTable } from "@/components/dashboard/HoldingsTable";
 import { useRefresh } from "@/context/RefreshContext";
-import { HoldingItem } from "@/types/dashboard";
+import { DetailedHoldingItem } from "@/types/dashboard";
 
 export default function PortfolioPage() {
     const { refreshKey } = useRefresh();
-    const [holdings, setHoldings] = useState<HoldingItem[]>([]);
+    const [holdings, setHoldings] = useState<DetailedHoldingItem[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = async () => {
         try {
-            const response = await api.get("/dashboard/summary");
-            if (response.data && response.data.holdings) {
-                setHoldings(response.data.holdings);
+            const response = await api.get("/dashboard/holdings");
+            if (response.data) {
+                setHoldings(response.data);
             }
         } catch (error) {
             console.error("Failed to fetch detailed holdings", error);
