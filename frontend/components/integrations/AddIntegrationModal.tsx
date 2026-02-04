@@ -168,8 +168,9 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                         <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                 ) : selectedProvider === 'freedom24' ? (
-                                    <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#66BC29] fill-current" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M21 4H3C2.45 4 2 4.45 2 5V19C2 19.55 2.45 20 3 20H21C21.55 20 22 19.55 22 19V5C22 4.45 21.55 4 21 4ZM12 17L7 12H10V8H14V12H17L12 17Z" />
+                                    <svg viewBox="0 0 24 24" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
+                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
                                     </svg>
                                 ) : null}
                             </div>
@@ -293,8 +294,9 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                 className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
                             >
                                 <div className="w-12 h-12 flex items-center justify-center mb-2">
-                                    <svg viewBox="0 0 24 24" className="w-10 h-10 text-[#66BC29] fill-current" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M21 4H3C2.45 4 2 4.45 2 5V19C2 19.55 2.45 20 3 20H21C21.55 20 22 19.55 22 19V5C22 4.45 21.55 4 21 4ZM12 17L7 12H10V8H14V12H17L12 17Z" />
+                                    <svg viewBox="0 0 24 24" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
+                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
                                     </svg>
                                 </div>
                                 <span className="text-white font-medium">Freedom24</span>
