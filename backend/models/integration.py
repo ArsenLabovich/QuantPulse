@@ -11,6 +11,7 @@ class ProviderID(str, enum.Enum):
     trading212 = "trading212"
     ethereum = "ethereum"
     freedom24 = "freedom24"
+    bybit = "bybit"
 
 
 class Integration(Base):

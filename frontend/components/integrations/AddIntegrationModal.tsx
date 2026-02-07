@@ -83,6 +83,13 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
             if (!formData.apiSecret.trim() && isSubmit) {
                 errors.apiSecret = ["Secret Key (Private Key) is required"];
             }
+        } else if (selectedProvider === "bybit") {
+            if (!formData.apiKey.trim() && isSubmit) {
+                errors.apiKey = ["API Key is required"];
+            }
+            if (!formData.apiSecret.trim() && isSubmit) {
+                errors.apiSecret = ["API Secret is required"];
+            }
         }
         return Object.keys(errors).length > 0 ? errors : null;
     };
@@ -157,29 +164,22 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                 <div className="flex items-center justify-between px-6 py-4 border-b border-[#2A2E39] relative z-20">
                     <div className="flex items-center gap-3">
                         {step === 2 && (
-                            <div className="w-8 h-8 flex items-center justify-center">
-                                {selectedProvider === 'binance' ? (
-                                    <svg role="img" viewBox="0 0 24 24" className="w-6 h-6 text-[#F0B90B] fill-current" xmlns="http://www.w3.org/2000/svg">
-                                        <title>Binance</title>
-                                        <path d="M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z" />
-                                    </svg>
-                                ) : selectedProvider === 'trading212' ? (
-                                    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                ) : selectedProvider === 'freedom24' ? (
-                                    <svg viewBox="0 0 24 24" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
-                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
-                                    </svg>
-                                ) : null}
+                            <div className="h-10 flex items-center justify-center rounded-lg">
+                                {selectedProvider && (
+                                    <img
+                                        src={`/icons/full_icon/${selectedProvider}.svg`}
+                                        alt={selectedProvider}
+                                        className="h-full w-auto object-contain"
+                                    />
+                                )}
                             </div>
                         )}
                         <h2 className="text-lg font-semibold text-white">
                             {step === 1 ? "Select Exchange" :
                                 selectedProvider === 'binance' ? "Configure Binance" :
                                     selectedProvider === 'trading212' ? "Configure Trading 212" :
-                                        selectedProvider === 'freedom24' ? "Configure Freedom24" : "Configure Integration"}
+                                        selectedProvider === 'freedom24' ? "Configure Freedom24" :
+                                            selectedProvider === 'bybit' ? "Configure Bybit" : "Configure Integration"}
                         </h2>
                     </div>
                     <div className="flex items-center gap-3">
@@ -256,55 +256,47 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                 <div className="p-6">
                     {step === 1 ? (
                         <div className="grid grid-cols-2 gap-4">
-                            <button
-                                onClick={() => handleProviderSelect("binance")}
-                                className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
-                            >
-                                <div className="w-12 h-12 flex items-center justify-center mb-2">
-                                    <svg role="img" viewBox="0 0 24 24" className="w-10 h-10 text-[#F0B90B] fill-current" xmlns="http://www.w3.org/2000/svg">
-                                        <title>Binance</title>
-                                        <path d="M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z" />
-                                    </svg>
-                                </div>
-                                <span className="text-white font-medium">Binance</span>
-                                <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                    Active
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleProviderSelect("trading212")}
-                                className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
-                            >
-                                <div className="w-12 h-12 flex items-center justify-center mb-2">
-                                    <svg viewBox="0 0 24 24" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M4 19L12 5L20 19" stroke="#00A4E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </div>
-                                <span className="text-white font-medium">Trading 212</span>
-                                <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                    Active
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={() => handleProviderSelect("freedom24")}
-                                className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-6 flex flex-col items-center gap-3 transition-all group"
-                            >
-                                <div className="w-12 h-12 flex items-center justify-center mb-2">
-                                    <svg viewBox="0 0 24 24" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z" fill="#66BC29" />
-                                        <path d="M18 11V6.2l-6-2.2v16.89c3.15-.99 5.56-4.14 5.95-7.89H14v-2h4z" fill="#004832" />
-                                    </svg>
-                                </div>
-                                <span className="text-white font-medium">Freedom24</span>
-                                <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                    Active
-                                </div>
-                            </button>
+                            {[
+                                {
+                                    id: "binance",
+                                    name: "Binance",
+                                    bg: "",
+                                    padding: ""
+                                },
+                                {
+                                    id: "trading212",
+                                    name: "Trading 212",
+                                    bg: "",
+                                    padding: ""
+                                },
+                                {
+                                    id: "freedom24",
+                                    name: "Freedom24",
+                                    bg: "bg-[#2A2E39]",
+                                    padding: "p-4"
+                                },
+                                {
+                                    id: "bybit",
+                                    name: "Bybit",
+                                    bg: "",
+                                    padding: ""
+                                }
+                            ].map((provider) => (
+                                <button
+                                    key={provider.id}
+                                    onClick={() => handleProviderSelect(provider.id)}
+                                    className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-8 flex flex-col items-center gap-4 transition-all group"
+                                >
+                                    <div className={`w-24 h-24 flex items-center justify-center mb-2 rounded-3xl shadow-sm transition-transform group-hover:scale-110 overflow-hidden ${provider.bg} ${provider.padding}`}>
+                                        <img
+                                            src={`/icons/square_icon/${provider.id}.svg`}
+                                            alt={provider.name}
+                                            className="w-full h-full object-contain rounded-3xl"
+                                        />
+                                    </div>
+                                    <span className="text-white text-lg font-medium">{provider.name}</span>
+                                </button>
+                            ))}
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
@@ -321,7 +313,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                 </div>
                             )}
 
-                            {selectedProvider === 'binance' ? (
+                            {selectedProvider === 'binance' || selectedProvider === 'bybit' ? (
                                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3">
                                     <Lock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                                     <div className="text-sm text-blue-300">
@@ -390,7 +382,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
 
 
 
-                            {(selectedProvider === 'binance' || selectedProvider === 'trading212' || selectedProvider === 'freedom24') && (
+                            {(selectedProvider === 'binance' || selectedProvider === 'trading212' || selectedProvider === 'freedom24' || selectedProvider === 'bybit') && (
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-[#909399]">
                                         {selectedProvider === 'trading212' ? 'API Secret / Private Key' :

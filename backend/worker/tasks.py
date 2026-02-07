@@ -143,7 +143,6 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
                 # Calculate the 24h change using moving window
                 calculated_change = await PriceTrackingService.calculate_24h_change(db, ad.symbol, integration.provider_id, float(ad.price))
                 
-                # Use calculated change. 
                 # Note: Currently we override whatever adapter sent (even if valid) to ensure consistency across providers as per plan.
                 final_change_24h = calculated_change
 

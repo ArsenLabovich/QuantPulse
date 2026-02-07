@@ -3,13 +3,15 @@ from adapters.base import BaseAdapter
 from adapters.binance_adapter import BinanceAdapter
 from adapters.trading212_adapter import Trading212Adapter
 from adapters.freedom24_adapter import Freedom24Adapter
+from adapters.bybit_adapter import BybitAdapter
 from models.integration import ProviderID
 
 class AdapterFactory:
     _adapters: Dict[ProviderID, Type[BaseAdapter]] = {
         ProviderID.binance: BinanceAdapter,
         ProviderID.trading212: Trading212Adapter,
-        ProviderID.freedom24: Freedom24Adapter
+        ProviderID.freedom24: Freedom24Adapter,
+        ProviderID.bybit: BybitAdapter
     }
 
     @classmethod
