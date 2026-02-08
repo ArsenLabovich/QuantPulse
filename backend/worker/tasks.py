@@ -133,15 +133,18 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
             for ad in assets_data:
                 # Get exchange rate to USD
                 rate = await currency_service.get_rate(ad.currency, "USD")
-                usd_value = float(ad.amount) * float(ad.price) * rate
+                price_native = float(ad.price)
+                price_usd = price_native * rate
+                
+                usd_value = float(ad.amount) * price_usd
                 total_portfolio_value += usd_value
                 
                 # --- PRICE HISTORY & CHANGE CALCULATION ---
-                # Record the price
-                await PriceTrackingService.record_price(db, ad.symbol, integration.provider_id, float(ad.price), ad.currency)
+                # Record the price (Store in USD for consistent charts)
+                await PriceTrackingService.record_price(db, ad.symbol, integration.provider_id, price_usd, "USD")
                 
                 # Calculate the 24h change using moving window
-                calculated_change = await PriceTrackingService.calculate_24h_change(db, ad.symbol, integration.provider_id, float(ad.price))
+                calculated_change = await PriceTrackingService.calculate_24h_change(db, ad.symbol, integration.provider_id, price_usd)
                 
                 # Note: Currently we override whatever adapter sent (even if valid) to ensure consistency across providers as per plan.
                 final_change_24h = calculated_change

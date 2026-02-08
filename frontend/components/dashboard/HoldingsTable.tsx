@@ -11,55 +11,124 @@ import {
     SortingState,
     ColumnDef
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, Search, Layers, Filter } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, Layers, Filter, Check } from "lucide-react";
 import { DetailedHoldingItem } from "@/types/dashboard";
-import { AssetDetailsDrawer } from "./AssetDetailsDrawer";
+import { motion, AnimatePresence } from "framer-motion";
 
 // --- Types ---
 
-interface HoldingsTableProps {
-    data: DetailedHoldingItem[];
+export type ViewMode = 'aggregated' | 'detailed';
+
+export interface PortfolioFilterState {
+    search: string;
+    hideDust: boolean;
+    selectedProvider: string;
+    viewMode: ViewMode;
+    groupByProvider: boolean;
+}
+
+interface PortfolioTableProps {
+    data: DetailedHoldingItem[]; // Already filtered & processed data
+    allData: DetailedHoldingItem[]; // For generating filter options
+    filters: PortfolioFilterState;
+    onFilterChange: (newFilters: PortfolioFilterState) => void;
     isLoading?: boolean;
+    onAssetSelect?: (asset: DetailedHoldingItem) => void;
 }
+// --- Sub-Component: Custom Provider Dropdown ---
+const ProviderDropdown = ({
+    providers,
+    selectedProvider,
+    onSelect
+}: {
+    providers: { name: string; id: string }[];
+    selectedProvider: string;
+    onSelect: (providerName: string) => void;
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
 
-type ViewMode = 'aggregated' | 'detailed';
+    // Close on outside click (simple implementation or ref needed)
+    // For now, let's use a simple backdrop or rely on local state
+    // To make it robust without extra libs, a backdrop is easiest:
 
-// --- Helper: Aggregation Logic ---
+    const selectedProviderItem = providers.find(p => p.name === selectedProvider);
 
-function aggregateBySymbol(items: DetailedHoldingItem[]): DetailedHoldingItem[] {
-    const map = new Map<string, DetailedHoldingItem>();
+    return (
+        <div className="relative">
+            {isOpen && (
+                <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+            )}
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[180px] transition-all relative z-20 ${isOpen ? 'border-[#3978FF] text-white shadow-lg shadow-[#3978FF]/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-[#3978FF]/50'}`}
+            >
+                <div className="flex items-center gap-3 overflow-hidden">
+                    {selectedProvider === 'all' ? (
+                        <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedProvider !== 'all' ? 'text-[#3978FF]' : 'text-gray-500'}`}>
+                            <Filter className="w-4 h-4" />
+                        </div>
+                    ) : (
+                        <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-1.5 flex items-center justify-center overflow-hidden shrink-0 border border-[#2A2E39]">
+                            <img
+                                src={`/icons/square_icon/${(selectedProviderItem?.id || 'binance').toLowerCase()}.svg`}
+                                className="w-full h-full object-contain rounded-md"
+                                onError={(e) => e.currentTarget.style.display = 'none'}
+                            />
+                        </div>
+                    )}
+                    <span className="truncate font-medium">
+                        {selectedProvider === 'all' ? 'All Platforms' : selectedProvider}
+                    </span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#3978FF]' : ''}`} />
+            </button>
 
-    for (const item of items) {
-        if (!map.has(item.symbol)) {
-            // Clone to avoid mutating original
-            map.set(item.symbol, { ...item, integration_name: "Multiple", provider_id: "multiple" });
-        } else {
-            const existing = map.get(item.symbol)!;
-            const totalVal = existing.value_usd + item.value_usd;
-            const totalBal = existing.balance + item.balance;
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="absolute top-full left-0 mt-2 w-full min-w-[220px] bg-[#1E222D] border border-[#2A2E39] rounded-xl shadow-xl overflow-hidden z-30"
+                    >
+                        <div className="max-h-[300px] overflow-y-auto py-1 custom-scrollbar">
+                            <button
+                                onClick={() => { onSelect('all'); setIsOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === 'all' ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39]">
+                                    <Filter className="w-4 h-4 text-gray-400" />
+                                </div>
+                                <span className="font-medium">All Platforms</span>
+                                {selectedProvider === 'all' && <Check className="w-4 h-4 ml-auto" />}
+                            </button>
 
-            // Weighted avg for change 24h
-            const existingWeight = existing.value_usd * (existing.change_24h || 0);
-            const itemWeight = item.value_usd * (item.change_24h || 0);
-            const newChange = totalVal > 0 ? (existingWeight + itemWeight) / totalVal : 0;
+                            {providers.map((p) => (
+                                <button
+                                    key={p.name}
+                                    onClick={() => { onSelect(p.name); setIsOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === p.name ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-1.5 flex items-center justify-center overflow-hidden shrink-0 border border-[#2A2E39]">
+                                        <img
+                                            src={`/icons/square_icon/${(p.id || 'binance').toLowerCase()}.svg`}
+                                            className="w-full h-full object-contain rounded-md"
+                                            onError={(e) => e.currentTarget.style.display = 'none'}
+                                        />
+                                    </div>
+                                    <span className="font-medium truncate">{p.name}</span>
+                                    {selectedProvider === p.name && <Check className="w-4 h-4 ml-auto" />}
+                                </button>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
 
-            // Update
-            existing.value_usd = totalVal;
-            existing.balance = totalBal;
-            existing.change_24h = newChange;
-            // Weighted avg price
-            existing.price_usd = totalBal > 0 ? totalVal / totalBal : existing.price_usd;
-
-            // Fix: If existing item has no icon but new one does, update it
-            if (!existing.icon_url && item.icon_url) {
-                existing.icon_url = item.icon_url;
-            }
-        }
-    }
-    return Array.from(map.values());
-}
-
-// --- Sub-Component: Asset Table ---
 
 interface AssetTableProps {
     data: DetailedHoldingItem[];
@@ -79,8 +148,9 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                 cell: (info) => {
                     const row = info.row.original;
                     return (
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 overflow-hidden shrink-0 ring-2 ring-[#1E222D]">
+                        <div className="flex items-center gap-4 py-2">
+                            {/* Large Square Icon */}
+                            <div className="w-12 h-12 rounded-2xl bg-[#131722] flex items-center justify-center text-xs font-bold text-gray-500 overflow-hidden shadow-sm border border-[#2A2E39]">
                                 {row.icon_url ? (
                                     <img
                                         src={row.icon_url}
@@ -91,12 +161,35 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                                             e.currentTarget.onerror = null;
                                         }}
                                     />
-                                ) : null}
-                                <span className={row.icon_url ? "hidden" : "block"}>{row.symbol[0]}</span>
+                                ) : (
+                                    <span className="text-xl">
+                                        {{
+                                            'USD': '$',
+                                            'EUR': '€',
+                                            'GBP': '£',
+                                            'JPY': '¥',
+                                            'AUD': 'A$',
+                                            'CAD': 'C$',
+                                            'CHF': 'Fr',
+                                            'CNY': '¥',
+                                            'RUB': '₽',
+                                            'NZD': 'NZ$',
+                                            'SEK': 'kr',
+                                            'KRW': '₩',
+                                            'SGD': 'S$',
+                                            'HKD': 'HK$',
+                                            'MXN': '$',
+                                            'INR': '₹',
+                                            'TRY': '₺',
+                                            'BRL': 'R$',
+                                            'ZAR': 'R',
+                                        }[row.symbol.toUpperCase()] || row.symbol[0]}
+                                    </span>
+                                )}
                             </div>
                             <div>
-                                <div className="font-bold text-white text-sm">{row.symbol}</div>
-                                <div className="text-xs text-gray-500 hidden sm:block font-medium">{row.name}</div>
+                                <div className="font-bold text-white text-base">{row.symbol}</div>
+                                <div className="text-xs text-gray-400 font-medium mt-0.5">{row.name}</div>
                             </div>
                         </div>
                     );
@@ -104,38 +197,49 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
             }),
             showIntegrationCol ? columnHelper.accessor("integration_name", {
                 header: "Source",
-                cell: (info) => <span className="text-xs font-medium text-blue-400 bg-blue-400/10 px-2 py-1 rounded-md">{info.getValue()}</span>
+                cell: (info) => (
+                    <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center overflow-hidden">
+                            {/* Try to load icon based on ID logic if we had it, for now rely on text or generic */}
+                            <img src={`/icons/square_icon/${(info.row.original.provider_id || 'binance').toLowerCase()}.svg`}
+                                className="w-full h-full object-contain"
+                                onError={(e) => e.currentTarget.style.display = 'none'}
+                            />
+                        </div>
+                        <span className="text-sm font-medium text-gray-300">{info.getValue()}</span>
+                    </div>
+                )
             }) : null,
             columnHelper.accessor("price_usd", {
                 header: "Price",
                 cell: (info) => {
                     const priceUsd = info.getValue();
-                    return <span className="text-white font-semibold text-sm">
+                    return <span className="text-white font-medium text-sm tabular-nums">
                         ${priceUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                     </span>;
                 },
             }),
             columnHelper.accessor("change_24h", {
-                header: "24h",
+                header: "24h Change",
                 cell: (info) => {
                     const val = info.getValue();
                     if (val === null || val === undefined) return <span className="text-gray-500">-</span>;
                     if (Math.abs(val) < 0.005) return <span className="text-xs font-bold text-gray-500">0.00%</span>;
                     const isPos = val > 0;
                     return (
-                        <span className={`text-xs font-bold ${isPos ? 'text-[#00C805]' : 'text-[#FF3B30]'}`}>
+                        <div className={`flex items-center gap-1 text-sm font-bold tabular-nums ${isPos ? 'text-[#00C805]' : 'text-[#FF3B30]'}`}>
                             {isPos ? "+" : ""}{val.toFixed(2)}%
-                        </span>
+                        </div>
                     );
                 },
             }),
             columnHelper.accessor("balance", {
                 header: "Balance",
-                cell: (info) => <span className="text-gray-400 text-sm">{info.getValue().toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>,
+                cell: (info) => <span className="text-gray-400 text-sm font-medium tabular-nums">{info.getValue().toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>,
             }),
             columnHelper.accessor("value_usd", {
-                header: "Value",
-                cell: (info) => <span className="text-white font-bold text-sm">
+                header: "Value (USD)",
+                cell: (info) => <span className="text-white font-bold text-base tabular-nums">
                     ${info.getValue().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>,
             }),
@@ -154,13 +258,13 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
     });
 
     return (
-        <div className="overflow-x-auto rounded-xl border border-[#2A2E39] bg-[#1E222D]">
+        <div className="overflow-x-auto rounded-2xl border border-[#2A2E39] bg-[#1E222D]">
             <table className="w-full text-left border-collapse">
-                <thead className="bg-[#131722] text-xs font-semibold text-gray-400 uppercase border-b border-[#2A2E39]">
+                <thead className="bg-[#151921] text-xs font-semibold text-gray-400 uppercase border-b border-[#2A2E39]">
                     {table.getHeaderGroups().map(headerGroup => (
                         <tr key={headerGroup.id}>
                             {headerGroup.headers.map(header => (
-                                <th key={header.id} className="p-4 cursor-pointer hover:text-white" onClick={header.column.getToggleSortingHandler()}>
+                                <th key={header.id} className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={header.column.getToggleSortingHandler()}>
                                     <div className="flex items-center gap-2">
                                         {flexRender(header.column.columnDef.header, header.getContext())}
                                         {{
@@ -174,19 +278,27 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                     ))}
                 </thead>
                 <tbody className="divide-y divide-[#2A2E39]">
-                    {table.getRowModel().rows.map(row => (
-                        <tr
-                            key={row.id}
-                            className="hover:bg-white/5 transition-colors cursor-pointer"
-                            onClick={() => onAssetClick(row.original)}
-                        >
-                            {row.getVisibleCells().map(cell => (
-                                <td key={cell.id} className="p-4 whitespace-nowrap">
-                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                </td>
-                            ))}
+                    {data.length === 0 ? (
+                        <tr>
+                            <td colSpan={columns.length} className="p-12 text-center text-gray-500">
+                                No assets match your filters.
+                            </td>
                         </tr>
-                    ))}
+                    ) : (
+                        table.getRowModel().rows.map(row => (
+                            <tr
+                                key={row.id}
+                                className="hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                                onClick={() => onAssetClick(row.original)}
+                            >
+                                {row.getVisibleCells().map(cell => (
+                                    <td key={cell.id} className="px-6 py-4 whitespace-nowrap">
+                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
         </div>
@@ -195,150 +307,100 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
 
 // --- Main Component ---
 
-export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
-    const [viewMode, setViewMode] = useState<ViewMode>('aggregated');
-    const [search, setSearch] = useState("");
-    const [hideDust, setHideDust] = useState(true);
-    const [selectedProvider, setSelectedProvider] = useState<string>('all');
-    const [groupByProvider, setGroupByProvider] = useState(false);
+export function PortfolioTable({ data, allData, filters, onFilterChange, isLoading, onAssetSelect }: PortfolioTableProps) {
 
-    // Drawer State
-    const [selectedAssetSymbol, setSelectedAssetSymbol] = useState<string | null>(null);
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    // Derived Providers for Filter
+    const providers = useMemo(() => {
+        const map = new Map<string, string>();
+        allData.forEach(item => {
+            if (!map.has(item.integration_name)) {
+                map.set(item.integration_name, item.provider_id || item.integration_name);
+            }
+        });
+        return Array.from(map.entries()).map(([name, id]) => ({ name, id }));
+    }, [allData]);
 
-    // Derived Data
-    const providers = useMemo(() => Array.from(new Set(data.map(i => i.integration_name))), [data]);
+    const handleAssetClick = (asset: DetailedHoldingItem) => {
+        onAssetSelect?.(asset);
+    };
 
-    const processedData = useMemo(() => {
-        let result = data;
-
-        // 1. Filter
-        if (hideDust) result = result.filter(i => i.value_usd >= 1.0);
-        if (search) {
-            const q = search.toLowerCase();
-            result = result.filter(i => i.symbol.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
-        }
-        if (selectedProvider !== 'all') {
-            result = result.filter(i => i.integration_name === selectedProvider);
-        }
-
-        // 2. View Mode (Aggregate or Detailed)
-        // If grouped by provider, we MUST use detailed.
-        if (viewMode === 'aggregated' && !groupByProvider) {
-            result = aggregateBySymbol(result);
-        }
-
-        return result;
-    }, [data, viewMode, search, hideDust, selectedProvider, groupByProvider]);
-
-    // Grouping for Render
+    // Grouping for Render (if detailed + grouped)
     const groupedData = useMemo(() => {
-        if (!groupByProvider) return null;
+        if (!filters.groupByProvider || filters.viewMode === 'aggregated') return null;
         const groups: Record<string, DetailedHoldingItem[]> = {};
-        processedData.forEach(item => {
+        data.forEach(item => {
             const key = item.integration_name;
             if (!groups[key]) groups[key] = [];
             groups[key].push(item);
         });
         return groups;
-    }, [processedData, groupByProvider]);
-
-    // Drawer Data
-    const drawerHoldings = useMemo(() => {
-        if (!selectedAssetSymbol) return [];
-        return data.filter(i => i.symbol === selectedAssetSymbol);
-    }, [data, selectedAssetSymbol]);
-
-    const handleAssetClick = (asset: DetailedHoldingItem) => {
-        setSelectedAssetSymbol(asset.symbol);
-        setIsDrawerOpen(true);
-    };
+    }, [data, filters.groupByProvider, filters.viewMode]);
 
     if (isLoading) return <div className="h-64 bg-[#1E222D] rounded-xl animate-pulse" />;
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {/* Controls Bar */}
-            <div className="flex flex-col xl:flex-row gap-4 justify-between bg-[#1E222D] p-4 rounded-xl border border-[#2A2E39]">
+            <div className="flex flex-col xl:flex-row gap-4 justify-between bg-[#1E222D] p-5 rounded-2xl border border-[#2A2E39] shadow-lg">
                 {/* Search */}
-                <div className="relative w-full xl:w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
+                <div className="relative w-full xl:w-80 group">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#3978FF] transition-colors">
+                        <Search className="w-5 h-5" />
+                    </div>
                     <input
                         type="text"
                         placeholder="Search assets..."
-                        className="w-full bg-[#131722] border border-[#2A2E39] rounded-lg pl-9 pr-4 py-2 text-sm text-white focus:ring-1 focus:ring-[#3978FF] outline-none"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full bg-[#131722] border border-[#2A2E39] rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-[#3978FF]/20 focus:border-[#3978FF] outline-none transition-all placeholder:text-gray-600"
+                        value={filters.search}
+                        onChange={(e) => onFilterChange({ ...filters, search: e.target.value })}
                     />
                 </div>
 
                 {/* Filters Row */}
                 <div className="flex flex-wrap items-center gap-3">
-                    {/* View Switcher */}
-                    <div className="flex bg-[#131722] rounded-lg p-1 border border-[#2A2E39]">
-                        <button
-                            onClick={() => { setViewMode('aggregated'); setGroupByProvider(false); }}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'aggregated' ? 'bg-[#3978FF] text-white' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            Aggregated
-                        </button>
-                        <button
-                            onClick={() => setViewMode('detailed')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'detailed' ? 'bg-[#3978FF] text-white' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            Detailed
-                        </button>
-                    </div>
+                    {/* Provider Filter (Custom Drodown) */}
+                    <ProviderDropdown
+                        providers={providers}
+                        selectedProvider={filters.selectedProvider}
+                        onSelect={(val) => onFilterChange({ ...filters, selectedProvider: val })}
+                    />
 
-                    {/* Provider Filter (Only in Detailed) */}
-                    {viewMode === 'detailed' && (
-                        <div className="relative">
-                            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-3 h-3" />
-                            <select
-                                value={selectedProvider}
-                                onChange={(e) => setSelectedProvider(e.target.value)}
-                                className="bg-[#131722] border border-[#2A2E39] rounded-lg pl-8 pr-4 py-2 text-xs text-white outline-none appearance-none cursor-pointer hover:border-gray-600"
-                            >
-                                <option value="all">All Platforms</option>
-                                {providers.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Group Toggle (Only in Detailed) */}
-                    {viewMode === 'detailed' && (
-                        <button
-                            onClick={() => setGroupByProvider(!groupByProvider)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${groupByProvider ? 'bg-[#3978FF]/20 border-[#3978FF] text-[#3978FF]' : 'bg-[#131722] border-[#2A2E39] text-gray-400 hover:text-white'}`}
-                        >
-                            <Layers className="w-3 h-3" />
-                            Group by Platform
-                        </button>
-                    )}
 
                     {/* Dust Toggle */}
-                    <label className="flex items-center gap-2 cursor-pointer select-none ml-2">
-                        <input
-                            type="checkbox"
-                            checked={hideDust}
-                            onChange={e => setHideDust(e.target.checked)}
-                            className="accent-[#3978FF] w-4 h-4 rounded"
-                        />
-                        <span className="text-xs text-gray-400 hover:text-white">Hide Dust</span>
-                    </label>
+                    <div className="flex items-center px-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none group">
+                            <input
+                                type="checkbox"
+                                checked={filters.hideDust}
+                                onChange={() => onFilterChange({ ...filters, hideDust: !filters.hideDust })}
+                                className="w-4 h-4 rounded border-[#2A2E39] bg-[#131722] text-[#3978FF] accent-[#3978FF] focus:ring-0 focus:ring-offset-0 focus:outline-none cursor-pointer transition-colors"
+                            />
+                            <span className="text-xs font-medium text-gray-400 group-hover:text-white transition-colors">
+                                Hide assets {'<'} $1
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
             {/* Content */}
-            {groupByProvider && groupedData ? (
+            {groupedData ? (
                 <div className="space-y-8">
                     {Object.entries(groupedData).map(([provider, items]) => {
                         const groupTotal = items.reduce((sum, i) => sum + i.value_usd, 0);
                         return (
                             <div key={provider} className="animate-in fade-in duration-500">
-                                <div className="flex items-end justify-between mb-3 px-1">
-                                    <h3 className="text-lg font-bold text-white">{provider}</h3>
-                                    <span className="text-sm font-bold text-[#00C805] bg-[#00C805]/10 px-3 py-1 rounded-full">
+                                <div className="flex items-end justify-between mb-4 px-2">
+                                    <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center">
+                                            <img src={`/icons/square_icon/${(items[0]?.provider_id || 'binance').toLowerCase()}.svg`}
+                                                className="w-full h-full object-contain"
+                                                onError={(e) => e.currentTarget.style.display = 'none'}
+                                            />
+                                        </div>
+                                        {provider}
+                                    </h3>
+                                    <span className="text-sm font-bold text-[#00C805] bg-[#00C805]/10 px-4 py-1.5 rounded-full border border-[#00C805]/20">
                                         ${groupTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -353,17 +415,11 @@ export function HoldingsTable({ data, isLoading }: HoldingsTableProps) {
                 </div>
             ) : (
                 <AssetTable
-                    data={processedData}
-                    showIntegrationCol={viewMode === 'detailed'}
+                    data={data}
+                    showIntegrationCol={filters.viewMode === 'detailed'}
                     onAssetClick={handleAssetClick}
                 />
             )}
-
-            <AssetDetailsDrawer
-                isOpen={isDrawerOpen}
-                onClose={() => setIsDrawerOpen(false)}
-                holdings={drawerHoldings}
-            />
         </div>
     );
 }

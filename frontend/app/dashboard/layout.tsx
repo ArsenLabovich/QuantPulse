@@ -21,10 +21,12 @@ export default function DashboardLayout({
 
     return (
         <RefreshProvider>
-            <div className="min-h-screen bg-[#000000] font-sans text-[#909399]">
+            <div className="h-screen flex flex-col overflow-hidden bg-[#000000] font-sans text-[#909399]">
                 <TopBar userEmail={user.email} onLogout={logout} />
-                <main className="max-w-[1920px] mx-auto p-4 sm:p-6 lg:p-8">
-                    {children}
+                <main className="flex-1 min-h-0 relative w-full overflow-y-auto custom-scrollbar">
+                    <div className="p-6">
+                        {children}
+                    </div>
                 </main>
             </div>
         </RefreshProvider>
