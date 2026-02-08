@@ -3,6 +3,7 @@ name = "quantpulse-backend"
 version = "0.1.0"
 description = ""
 authors = ["QuantPulse Team"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
