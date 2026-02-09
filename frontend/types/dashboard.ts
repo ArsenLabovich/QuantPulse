@@ -10,6 +10,13 @@ export interface HoldingItem {
     change_24h?: number | null;
 }
 
+export interface DetailedHoldingItem extends HoldingItem {
+    integration_id: string;
+    integration_name: string;
+    provider_id: string;
+    asset_type: string;
+}
+
 export interface Movers {
     top_gainer?: HoldingItem | null;
     top_loser?: HoldingItem | null;

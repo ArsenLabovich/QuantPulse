@@ -85,7 +85,7 @@ class Trading212Adapter(BaseAdapter):
                 logger.debug(f"Metadata for {ticker} matched to {inst.get('ticker')}: {inst.get('name')}")
                 
             name = inst.get("name") or inst.get("shortName") if inst else normalized_symbol
-            asset_currency = inst.get("currencyCode", "USD") if inst else "USD"
+            asset_currency = inst.get("currencyCode", account_currency) if inst else account_currency
             
             assets.append(AssetData(
                 symbol=normalized_symbol,

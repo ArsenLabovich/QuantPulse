@@ -164,6 +164,7 @@ export function HistoryChart({
                             }}
                         />
                         <Tooltip
+                            animationDuration={100}
                             contentStyle={{ backgroundColor: '#1E222D', border: '1px solid #2A2E39', borderRadius: '8px' }}
                             itemStyle={{ color: '#3978FF' }}
                             formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']}
