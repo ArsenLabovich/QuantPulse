@@ -64,9 +64,39 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-full bg-[#131722] flex items-center justify-center text-lg font-bold text-gray-400 overflow-hidden ring-1 ring-[#2A2E39]">
                                     {asset.icon_url ? (
-                                        <img src={asset.icon_url || undefined} alt={asset.symbol} className="w-full h-full object-cover" />
+                                        <img
+                                            src={asset.icon_url || undefined}
+                                            alt={asset.symbol}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                e.currentTarget.src = "/icons/generic_asset.png";
+                                                e.currentTarget.onerror = null;
+                                            }}
+                                        />
                                     ) : (
-                                        <span>{asset.symbol[0]}</span>
+                                        <span className="text-xl">
+                                            {{
+                                                'USD': '$',
+                                                'EUR': '€',
+                                                'GBP': '£',
+                                                'JPY': '¥',
+                                                'AUD': 'A$',
+                                                'CAD': 'C$',
+                                                'CHF': 'Fr',
+                                                'CNY': '¥',
+                                                'RUB': '₽',
+                                                'NZD': 'NZ$',
+                                                'SEK': 'kr',
+                                                'KRW': '₩',
+                                                'SGD': 'S$',
+                                                'HKD': 'HK$',
+                                                'MXN': '$',
+                                                'INR': '₹',
+                                                'TRY': '₺',
+                                                'BRL': 'R$',
+                                                'ZAR': 'R',
+                                            }[asset.symbol.toUpperCase()] || asset.symbol[0]}
+                                        </span>
                                     )}
                                 </div>
                                 <div>
