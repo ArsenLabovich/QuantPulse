@@ -150,6 +150,7 @@ export function TreemapWidget({ data, isLoading }: TreemapWidgetProps) {
                         isAnimationActive={false} // Disable animation for crisp rendering
                     >
                         <Tooltip
+                            isAnimationActive={false}
                             content={({ active, payload }) => {
                                 if (active && payload && payload.length) {
                                     const d = payload[0].payload;

@@ -56,7 +56,7 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: "100%", opacity: 0 }}
                     transition={{ type: "tween", ease: "easeOut", duration: 0.3 }}
-                    className="fixed top-0 right-0 h-full z-50 shadow-2xl"
+                    className="fixed top-16 right-0 h-[calc(100vh-64px)] z-40 shadow-2xl"
                 >
                     <div className="w-[440px] h-full bg-[#1E222D]/95 border-l border-[#2A2E39] rounded-l-2xl overflow-hidden flex flex-col backdrop-blur-sm">
                         {/* Header Section */}
@@ -101,7 +101,7 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                 <div className="bg-[#131722] p-3 rounded-xl border border-[#2A2E39]">
                                     <p className="text-gray-500 text-xs font-medium mb-1 uppercase tracking-wider">Total Balance</p>
                                     <div className="text-lg font-bold text-white font-mono flex items-baseline gap-1">
-                                        <span>{totalBalance.toLocaleString()}</span>
+                                        <span>{totalBalance.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
                                         <span className="text-xs font-normal text-gray-500">{asset.symbol}</span>
                                     </div>
                                 </div>
@@ -145,7 +145,7 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                                     tickFormatter={(val) => {
                                                         return new Intl.NumberFormat('en-US', {
                                                             style: 'currency',
-                                                            currency: 'USD',
+                                                            currency: asset.currency || 'USD',
                                                             notation: "compact",
                                                             maximumFractionDigits: 1,
                                                         }).format(val);
@@ -154,7 +154,14 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                                 <Tooltip
                                                     contentStyle={{ backgroundColor: '#1E222D', border: '1px solid #2A2E39', borderRadius: '8px', fontSize: '12px' }}
                                                     itemStyle={{ color: '#fff' }}
-                                                    formatter={(val: number | undefined) => [val != null ? `$${val.toFixed(2)}` : 'N/A', 'Price']}
+                                                    formatter={(val: number | undefined) => [
+                                                        val != null ? new Intl.NumberFormat('en-US', {
+                                                            style: 'currency',
+                                                            currency: asset.currency || 'USD',
+                                                            minimumFractionDigits: 2
+                                                        }).format(val) : 'N/A',
+                                                        'Price'
+                                                    ]}
                                                     labelFormatter={(label) => new Date(label).toLocaleString()}
                                                 />
                                                 <Area
@@ -178,11 +185,21 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
 
                         {/* Scrollable Breakdown Section */}
                         <div className="flex-1 min-h-0 px-5 pb-5 overflow-y-auto custom-scrollbar">
-                            <h3 className="text-[#909399] font-bold mb-3 flex items-center gap-2 text-xs uppercase tracking-widest sticky top-0 bg-[#1E222D]/0 py-2 z-10 backdrop-blur-md">
-                                <Wallet className="w-4 h-4 text-[#3978FF]" />
-                                Holdings Breakdown
-                            </h3>
-                            <div className="space-y-3">
+                            <div className="sticky top-0 bg-[#1E222D]/95 z-20 pb-2 backdrop-blur-md mb-2">
+                                <h3 className="text-[#909399] font-bold py-2 flex items-center gap-2 text-xs uppercase tracking-widest">
+                                    <Wallet className="w-4 h-4 text-[#3978FF]" />
+                                    Holdings Breakdown
+                                </h3>
+                                <div className="flex items-center justify-between px-4 border-b border-[#2A2E39] pb-2">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Platform</span>
+                                    <div className="flex items-center gap-6 text-right">
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider w-[80px]">Price</span>
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider w-[80px]">Holdings</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 pt-1">
                                 {holdings.map((h, idx) => {
                                     // Robust Provider Detection
                                     const knownProviders = ['trading212', 'freedom24', 'binance', 'bybit', 'kraken', 'coinbase', 'kucoin', 'gate.io'];
@@ -225,13 +242,46 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-white font-mono">
-                                                    {h.balance.toLocaleString()}
-                                                </p>
-                                                <p className="text-xs text-gray-400 font-mono">
-                                                    ${h.value_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                                </p>
+
+                                            <div className="flex items-center gap-6">
+                                                {/* Price Section */}
+                                                <div className="text-right flex flex-col justify-center w-[80px]">
+                                                    {h.currency && h.currency !== 'USD' ? (
+                                                        <>
+                                                            <p className="text-white font-medium text-sm tabular-nums">
+                                                                {new Intl.NumberFormat('en-US', {
+                                                                    style: 'currency',
+                                                                    currency: h.currency,
+                                                                    minimumFractionDigits: 2,
+                                                                    maximumFractionDigits: (h.price < 1) ? 6 : 2,
+                                                                }).format(h.price)}
+                                                            </p>
+                                                            <p className="text-gray-500 text-xs tabular-nums mt-0.5">
+                                                                ${h.price_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: (h.price_usd < 1) ? 6 : 2 })}
+                                                            </p>
+                                                        </>
+                                                    ) : (
+                                                        <p className="text-white font-medium text-sm tabular-nums">
+                                                            ${h.price_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: (h.price_usd < 1) ? 6 : 2 })}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                {/* Balance & Value Section */}
+                                                <div className="text-right w-[80px]">
+                                                    <p className="text-sm font-bold text-white font-mono flex items-center justify-end gap-1">
+                                                        <span className="text-[10px] text-gray-500 font-sans font-normal">Qty:</span>
+                                                        {h.balance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 font-mono">
+                                                        ${h.value_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </p>
+                                                    {h.currency && h.currency !== 'USD' && (
+                                                        <p className="text-[10px] text-gray-500 font-mono">
+                                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: h.currency }).format(h.balance * h.price)}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     )

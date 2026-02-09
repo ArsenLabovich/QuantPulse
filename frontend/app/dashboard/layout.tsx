@@ -1,6 +1,7 @@
 "use client";
 
 import { TopBar } from "@/components/TopBar";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { RefreshProvider } from "@/context/RefreshContext";
 
@@ -10,6 +11,8 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     const { user, loading, logout } = useAuth();
+    const pathname = usePathname();
+    const isPortfolio = pathname?.endsWith("/portfolio");
 
     // If loading, show a minimal loading state consistent with the dashboard
     if (loading) {
@@ -23,10 +26,14 @@ export default function DashboardLayout({
         <RefreshProvider>
             <div className="h-screen flex flex-col overflow-hidden bg-[#000000] font-sans text-[#909399]">
                 <TopBar userEmail={user.email} onLogout={logout} />
-                <main className="flex-1 min-h-0 relative w-full overflow-y-auto custom-scrollbar">
-                    <div className="p-6">
-                        {children}
-                    </div>
+                <main className={`flex-1 min-h-0 relative w-full ${isPortfolio ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
+                    {isPortfolio ? (
+                        children
+                    ) : (
+                        <div className="p-6">
+                            {children}
+                        </div>
+                    )}
                 </main>
             </div>
         </RefreshProvider>

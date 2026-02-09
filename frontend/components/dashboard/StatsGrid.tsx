@@ -168,6 +168,11 @@ export function StatsGrid({ movers, allocation, holdings, cashValue, isLoading }
                             <div className={`text-xl font-bold ${stat.title === 'Dominance' || stat.type === 'cash' ? stat.color : 'text-white'}`}>
                                 {price}
                             </div>
+                            {stat.type !== 'cash' && stat.title !== 'Dominance' && asset && asset.currency && asset.currency !== 'USD' && (
+                                <div className="text-xs font-medium text-gray-500 mb-0.5">
+                                    ${asset.price_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                            )}
                             <div className={`text-xs font-bold ${changeColor}`}>
                                 {changeStr}
                             </div>

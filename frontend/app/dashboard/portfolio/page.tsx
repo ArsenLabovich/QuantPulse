@@ -49,7 +49,10 @@ export default function PortfolioPage() {
         hideDust: true,
         selectedProvider: "all",
         viewMode: "aggregated",
-        groupByProvider: false
+        groupByProvider: false,
+        selectedAssetType: "all",
+        performanceMode: "all",
+        selectedCurrency: "all"
     });
 
     const fetchData = async () => {
@@ -79,8 +82,29 @@ export default function PortfolioPage() {
             const q = filters.search.toLowerCase();
             result = result.filter(i => i.symbol.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
         }
+
+        // Provider Filter
         if (filters.selectedProvider !== 'all') {
             result = result.filter(i => i.integration_name === filters.selectedProvider);
+        }
+
+        // Asset Type Filter
+        if (filters.selectedAssetType !== 'all') {
+            result = result.filter(i => i.asset_type?.toLowerCase() === filters.selectedAssetType.toLowerCase());
+        }
+
+        // Currency Filter
+        if (filters.selectedCurrency !== 'all') {
+            result = result.filter(i => i.currency === filters.selectedCurrency);
+        }
+
+        // Performance Filter
+        if (filters.performanceMode !== 'all') {
+            if (filters.performanceMode === 'gainers') {
+                result = result.filter(i => (i.change_24h || 0) > 0);
+            } else if (filters.performanceMode === 'losers') {
+                result = result.filter(i => (i.change_24h || 0) < 0);
+            }
         }
 
         // 2. Aggregation
@@ -131,7 +155,13 @@ export default function PortfolioPage() {
                                 filters={filters}
                                 onFilterChange={setFilters}
                                 isLoading={loading}
-                                onAssetSelect={setSelectedAsset}
+                                onAssetSelect={(asset) => {
+                                    if (selectedAsset?.symbol === asset.symbol) {
+                                        setSelectedAsset(null);
+                                    } else {
+                                        setSelectedAsset(asset);
+                                    }
+                                }}
                             />
                         </div>
                     </div>
