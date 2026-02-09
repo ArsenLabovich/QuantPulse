@@ -222,9 +222,9 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                 </h3>
                                 <div className="flex items-center justify-between px-4 border-b border-[#2A2E39] pb-2">
                                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Platform</span>
-                                    <div className="flex items-center gap-6 text-right">
+                                    <div className="flex items-center gap-10 text-right">
                                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider w-[80px]">Price</span>
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider w-[80px]">Holdings</span>
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider w-[100px]">Holdings</span>
                                     </div>
                                 </div>
                             </div>
@@ -273,7 +273,7 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-6">
+                                            <div className="flex items-center gap-10">
                                                 {/* Price Section */}
                                                 <div className="text-right flex flex-col justify-center w-[80px]">
                                                     {h.currency && h.currency !== 'USD' ? (
@@ -298,7 +298,7 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                                 </div>
 
                                                 {/* Balance & Value Section */}
-                                                <div className="text-right w-[80px]">
+                                                <div className="text-right w-[100px]">
                                                     <p className="text-sm font-bold text-white font-mono flex items-center justify-end gap-1">
                                                         <span className="text-[10px] text-gray-500 font-sans font-normal">Qty:</span>
                                                         {h.balance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
