@@ -35,18 +35,21 @@ class Trading212Adapter(BaseAdapter):
         account_meta = await client.get_account_metadata()
         account_currency = account_meta.get("currencyCode", "USD")
 
-        # 2. Cash
+        # 2. Cash (Sum free, pieCash, and blocked for full liquidity view)
         cash_data = await client.get_account_cash()
         free_cash = float(cash_data.get("free", 0.0))
-        # Cash is always displayed in account currency
+        pie_cash = float(cash_data.get("pieCash", 0.0))
+        blocked_cash = float(cash_data.get("blocked", 0.0))
+        
+        total_cash = free_cash + pie_cash + blocked_cash
         
         assets = []
-        if free_cash > 0:
+        if total_cash > 0:
             assets.append(AssetData(
                 symbol=account_currency, # e.g. EUR
                 original_symbol=account_currency,
-                amount=free_cash,
-                price=1.0, # Price of 1 unit of currency in itself is 1. We rely on FX service for conversion later.
+                amount=total_cash,
+                price=1.0, 
                 name=account_currency,
                 currency=account_currency,
                 asset_type=AssetType.FIAT,
