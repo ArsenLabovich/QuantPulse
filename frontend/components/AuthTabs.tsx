@@ -132,16 +132,27 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
         e.preventDefault();
         setError("");
 
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const formEmail = formData.get("email") as string || email;
+        const formPassword = formData.get("password") as string || password;
+        const formConfirmPassword = formData.get("confirmPassword") as string || confirmPassword;
+
         if (mode === "register") {
-            if (!isValidEmail(email)) {
+            if (!isValidEmail(formEmail)) {
                 setError("Please enter a valid email address");
                 return;
             }
-            if (password !== confirmPassword) {
+            if (formPassword !== formConfirmPassword) {
                 setError("Passwords do not match");
                 return;
             }
             if (passwordError) return;
+        } else {
+            // Login mode validation
+            if (!formEmail || !formPassword) {
+                setError("Please enter both email and password");
+                return;
+            }
         }
 
         // Clear any existing tokens before attempting new login
@@ -152,16 +163,16 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
 
         try {
             if (mode === "register") {
-                const response = await api.post("/auth/register", { email, password });
+                const response = await api.post("/auth/register", { email: formEmail, password: formPassword });
 
                 // Auto-login logic
                 login(response.data.access_token, response.data.refresh_token);
             } else {
-                const formData = new URLSearchParams();
-                formData.append("username", email);
-                formData.append("password", password);
+                const submitData = new URLSearchParams();
+                submitData.append("username", formEmail);
+                submitData.append("password", formPassword);
 
-                const response = await api.post("/auth/token", formData, {
+                const response = await api.post("/auth/token", submitData, {
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 });
 
@@ -250,6 +261,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                         <div className="space-y-2">
                             <label className="text-xs font-medium text-[#B2B5BE] uppercase tracking-wider">Email Address</label>
                             <input
+                                name="email"
                                 type="email"
                                 placeholder="name@example.com"
                                 className={cn(
@@ -269,6 +281,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                             <label className="text-xs font-medium text-[#B2B5BE] uppercase tracking-wider">Password</label>
                             <div className="relative">
                                 <input
+                                    name="password"
                                     type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
                                     className={cn(
@@ -303,6 +316,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                             <div className="space-y-2">
                                 <label className="text-xs font-medium text-[#B2B5BE] uppercase tracking-wider">Confirm Password</label>
                                 <input
+                                    name="confirmPassword"
                                     type="password"
                                     placeholder="••••••••"
                                     className={cn(
@@ -321,7 +335,7 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
 
                         <button
                             type="submit"
-                            disabled={loading || !isFormValid()}
+                            disabled={loading || (mode === "register" && !isFormValid())}
                             className="mt-2 w-full p-3 bg-gradient-to-r from-[#3978FF] to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-lg shadow-lg shadow-[#3978FF]/20 transition-all active:scale-[0.98] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed flex items-center justify-center"
                         >
                             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (mode === "login" ? "Access Terminal" : "Register Account")}

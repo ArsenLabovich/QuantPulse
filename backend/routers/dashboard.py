@@ -412,7 +412,7 @@ async def get_dashboard_summary(
             icon_url = IconResolver.get_icon_url(sym, AssetType.STOCK, "unknown") # Type is tricky here if mixed, but IconResolver handles it
         
         # Calculate USD price based on value_usd / balance
-        price_usd = total_val / data["balance"] if data["balance"] > 0 else data["price"]
+        price_usd = total_val / data["balance"] if abs(data["balance"]) > 1e-12 else data["price"]
         
         holdings.append(HoldingItem(
             symbol=sym,
@@ -442,7 +442,7 @@ async def get_dashboard_summary(
     
     significant_holdings = [
         h for h in holdings 
-        if h.value_usd > 1.0 
+        if abs(h.value_usd) > 1.0 
         and holdings_map[h.symbol].get("asset_type") != AssetType.FIAT
     ]
     
@@ -591,7 +591,7 @@ async def get_detailed_holdings(
         
         # Calculate price_usd (derived)
         price_usd = 0.0
-        if amount_val > 0:
+        if abs(amount_val) > 1e-12:
             price_usd = usd_val / amount_val
         elif price_val > 0 and asset.currency == "USD": 
             price_usd = price_val

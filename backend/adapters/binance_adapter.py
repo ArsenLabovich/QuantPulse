@@ -52,61 +52,142 @@ class BinanceAdapter(BaseAdapter):
         })
         
         wallet_types = ['spot', 'future', 'delivery', 'funding']
-        final_balances = {}
         
         loop = asyncio.get_event_loop()
         
+        # 1. Standard Wallets (Spot, Future, Delivery, Funding)
+        detailed_balances = {} # symbol -> {source: amount}
+        
+        def add_bal(symbol, source, amount):
+            if abs(amount) < 1e-12: return
+            if symbol not in detailed_balances: detailed_balances[symbol] = {}
+            detailed_balances[symbol][source] = detailed_balances[symbol].get(source, 0.0) + amount
+
         for w_type in wallet_types:
             try:
                 params = {'type': w_type} if w_type != 'spot' else {}
                 balance_data = await loop.run_in_executor(None, lambda: exchange.fetch_balance(params))
                 total_data = balance_data.get('total', {})
-                
-                for currency, amount in total_data.items():
-                    if amount > 0:
-                        final_balances[currency] = final_balances.get(currency, 0.0) + amount
+                for symbol, amount in total_data.items():
+                    # Handle LD prefix (Spot View of Flexible Earn)
+                    norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
+                    add_bal(norm_symbol, f"{w_type}-{symbol}", amount)
             except Exception as e:
                 logger.warning(f"Could not fetch Binance {w_type} balance: {e}")
 
-        if not final_balances:
-            return []
+        # 2. Simple Earn (Flexible)
+        try:
+            flex_earn = await loop.run_in_executor(None, lambda: exchange.sapi_get_simple_earn_flexible_position({'size': 100}))
+            for row in flex_earn.get('rows', []):
+                symbol = row['asset']
+                amount = float(row.get('totalAmount') or 0)
+                norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
+                add_bal(norm_symbol, "SimpleEarn-Flexible", amount)
+        except Exception: pass
 
-        # Fetch Tickers for pricing
+        # 3. Simple Earn (Locked)
+        try:
+            locked_earn = await loop.run_in_executor(None, lambda: exchange.sapi_get_simple_earn_locked_position({'size': 100}))
+            for row in locked_earn.get('rows', []):
+                symbol = row['asset']
+                amount = float(row.get('amount') or row.get('totalAmount') or 0)
+                norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
+                add_bal(norm_symbol, "SimpleEarn-Locked", amount)
+        except Exception: pass
+
+        # 4. Staking / DeFi / Savings (Exhaustive search)
+        for p_type in ['STAKING', 'L_DEFI', 'F_DEFI']:
+            try:
+                staking_pos = await loop.run_in_executor(None, lambda: exchange.sapi_get_staking_position({'product': p_type, 'size': 100}))
+                for row in staking_pos:
+                    symbol = row['asset']
+                    amount = float(row.get('amount') or 0)
+                    norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
+                    add_bal(norm_symbol, f"Staking-{p_type}", amount)
+            except Exception: pass
+
+        # 5. BNB Vault & Margin
+        try:
+            vault = await loop.run_in_executor(None, exchange.sapi_get_bnb_vault_account)
+            amount = float(vault.get('totalAmount') or 0)
+            add_bal('BNB', "BNB-Vault", amount)
+        except Exception: pass
+
+        try:
+            margin = await loop.run_in_executor(None, exchange.sapi_get_margin_account)
+            for asset_info in margin.get('userAssets', []):
+                asset = asset_info['asset']
+                net_amount = float(asset_info['netAsset'])
+                add_bal(asset, "Cross-Margin", net_amount)
+        except Exception: pass
+
+        # 6. Direct Funding Assets
+        try:
+            funding = await loop.run_in_executor(None, exchange.sapi_post_asset_get_funding_asset)
+            for item in funding:
+                asset = item['asset']
+                amount = float(item['free']) + float(item['freeze']) + float(item['withdrawing'])
+                add_bal(asset, "Funding-Direct", amount)
+        except Exception: pass
+
+        # --- DEDUPLICATION LOGIC ---
+        final_balances = {}
+        for symbol, sources in detailed_balances.items():
+            logger.info(f"Binance Detail for {symbol}: {sources}")
+            
+            # Bucket 1: Flexible Positions (SimpleEarn-Flexible or LD-prefixed view assets)
+            flex_vals = [v for k, v in sources.items() if "simpleearn-flexible" in k.lower() or "-ld" in k.lower()]
+            flex_total = max(flex_vals) if flex_vals else 0.0
+            
+            # Bucket 2: Locked Positions & Staking & Vault
+            # BNB Vault often overlaps with SimpleEarn-Locked or Staking reports.
+            locked_vals = [v for k, v in sources.items() if any(x in k.lower() for x in ["simpleearn-locked", "staking-", "bnb-vault"])]
+            locked_total = max(locked_vals) if locked_vals else 0.0
+            
+            # Bucket 3: Funding Wallet (Direct API vs fetch_balance report)
+            funding_vals = [v for k, v in sources.items() if any(x in k.lower() for x in ["funding-", "funding_asset"])]
+            funding_total = max(funding_vals) if funding_vals else 0.0
+            
+            # Bucket 4: Real liquid balances and unique buckets (additive)
+            liquid_total = 0.0
+            for k, v in sources.items():
+                k_lower = k.lower()
+                # Skip things already grouped above
+                if any(x in k_lower for x in ["simpleearn-", "staking-", "funding-", "-ld", "bnb-vault", "funding_asset"]):
+                    continue
+                # This includes Spot (non-LD), Future, Delivery, Margin
+                liquid_total += v
+            
+            total = flex_total + locked_total + funding_total + liquid_total
+            
+            if abs(total) > 0.00000001:
+                final_balances[symbol] = total
+
+        logger.info(f"Binance FINAL combined balances: {final_balances}")
+
+        # Fetch Tickers
         tickers = await loop.run_in_executor(None, exchange.fetch_tickers)
         
         assets = []
         for symbol, amount in final_balances.items():
             price = 0.0
             change_24h = 0.0
-            
-            # Normalized symbol (handle Binance prefixes like LD)
-            norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-            
-            # Pricing
-            if norm_symbol in ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD', 'USD']:
+            if symbol in ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD', 'USD', 'USDS', 'USDP', 'BNFCR']:
                 price = 1.0
             else:
-                pair = f"{norm_symbol}/USDT"
-                if pair in tickers:
-                    price = tickers[pair]['last']
-                    change_24h = tickers[pair].get('percentage', 0.0)
-                else:
-                    # Try fallback pairs
-                    for fb in [f"{norm_symbol}/BUSD", f"{norm_symbol}/USDC"]:
-                        if fb in tickers:
-                            price = tickers[fb]['last']
-                            change_24h = tickers[fb].get('percentage', 0.0)
-                            break
+                for quote in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD']:
+                    pair = f"{symbol}/{quote}"
+                    if pair in tickers:
+                        price = tickers[pair]['last']
+                        change_24h = tickers[pair].get('percentage', 0.0)
+                        # If the quote is EUR, convert back to USD? 
+                        # Actually, tickers are usually in the quote currency.
+                        # But Binance crypto pairs are mostly against stables.
+                        break
             
             assets.append(AssetData(
-                symbol=norm_symbol,
-                original_symbol=symbol,
-                amount=amount,
-                price=price,
-                name=norm_symbol, # Fallback name
-                asset_type=AssetType.CRYPTO,
-                change_24h=change_24h,
-                image_url=IconResolver.get_icon_url(norm_symbol, AssetType.CRYPTO, self.get_provider_id())
+                symbol=symbol, amount=amount, price=price, name=symbol,
+                asset_type=AssetType.CRYPTO, change_24h=change_24h,
+                image_url=IconResolver.get_icon_url(symbol, AssetType.CRYPTO, self.get_provider_id())
             ))
-            
         return assets

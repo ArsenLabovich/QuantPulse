@@ -77,7 +77,7 @@ export default function PortfolioPage() {
         let result = holdings;
 
         // 1. Filter
-        if (filters.hideDust) result = result.filter(i => i.value_usd >= 1.0);
+        if (filters.hideDust) result = result.filter(i => Math.abs(i.value_usd) >= 1.0);
         if (filters.search) {
             const q = filters.search.toLowerCase();
             result = result.filter(i => i.symbol.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
