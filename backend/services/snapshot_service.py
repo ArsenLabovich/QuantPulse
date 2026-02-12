@@ -20,11 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.assets import UnifiedAsset, PortfolioSnapshot
 from models.integration import Integration
 from services.distributed_lock import LockManager
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# --- Constants ---
-SNAPSHOT_DEDUP_WINDOW_SEC = 45
+# --- Constants removed and moved to config.py ---
 
 
 class SnapshotService:
@@ -62,7 +62,7 @@ class SnapshotService:
         """
         lock = self._lock_manager.snapshot_lock(user_id)
 
-        if not await lock.acquire(timeout_sec=25):
+        if not await lock.acquire(timeout_sec=settings.SNAPSHOT_LOCK_TIMEOUT_SEC):
             logger.warning(f"Snapshot lock timeout for user {user_id}. Skipping.")
             return None
 
@@ -179,7 +179,7 @@ class SnapshotService:
     ) -> Optional[PortfolioSnapshot]:
         """Ищет snapshot в пределах dedup-окна."""
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-            seconds=SNAPSHOT_DEDUP_WINDOW_SEC
+            seconds=settings.SNAPSHOT_DEDUP_WINDOW_SEC
         )
         result = await db.execute(
             select(PortfolioSnapshot)

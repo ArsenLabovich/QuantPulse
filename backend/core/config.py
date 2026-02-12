@@ -17,7 +17,16 @@ class Settings(BaseSettings):
     SYNC_LOCK_TTL_SEC: int = 50           # TTL для lock синхронизации интеграции
     SYNC_WAIT_MAX_SEC: int = 20           # Макс. ожидание если sync уже идёт
     SNAPSHOT_LOCK_TTL_SEC: int = 30       # TTL для lock snapshot
+    SNAPSHOT_LOCK_TIMEOUT_SEC: float = 25.0 # Тайм-аут ожидания snapshot lock
     SNAPSHOT_DEDUP_WINDOW_SEC: int = 45   # Окно дедупликации snapshot (сек)
+    
+    # --- Data Retention & General ---
+    PRICE_HISTORY_KEEP_HOURS: int = 48     # Хранение истории цен
+    BASE_CURRENCY: str = "USD"            # Основная валюта системы
+    
+    # --- Distributed Lock Defaults ---
+    DLOCK_RETRY_INTERVAL_SEC: float = 0.3
+    DLOCK_DEFAULT_TIMEOUT_SEC: float = 10.0
     
     # Validate secrets exist
     def __init__(self, **kwargs):

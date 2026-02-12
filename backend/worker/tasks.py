@@ -153,7 +153,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
     # Используем отдельную сессию для price tracking (не влияет на основную транзакцию)
     async with session_factory() as price_db:
         for ad in assets_data:
-            rate = await currency_service.get_rate(ad.currency, "USD")
+            rate = await currency_service.get_rate(ad.currency, settings.BASE_CURRENCY)
             price_native = float(ad.price)
             price_usd = price_native * rate
             usd_value = float(ad.amount) * price_usd
@@ -161,7 +161,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
 
             # Price history (отдельная операция, не блокирует основную транзакцию)
             await PriceTrackingService.record_price(
-                price_db, ad.symbol, integration.provider_id, price_usd, "USD"
+                price_db, ad.symbol, integration.provider_id, price_usd, settings.BASE_CURRENCY
             )
             calculated_change = await PriceTrackingService.calculate_24h_change(
                 price_db, ad.symbol, integration.provider_id, price_usd
@@ -282,7 +282,7 @@ def cleanup_price_history():
     async def run_cleanup():
         async with engine.begin() as conn:
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-                hours=48
+                hours=settings.PRICE_HISTORY_KEEP_HOURS
             )
             result = await conn.execute(
                 sa_delete(MarketPriceHistory).where(

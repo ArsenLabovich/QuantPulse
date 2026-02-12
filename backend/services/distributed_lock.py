@@ -27,6 +27,8 @@ from typing import Optional
 
 from redis import Redis
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,11 +63,12 @@ class DistributedLock:
         self,
         redis_client: Redis,
         resource_name: str,
-        ttl_sec: int = 30,
+        ttl_sec: Optional[int] = None,
     ):
         self._redis = redis_client
         self._key = f"dlock:{resource_name}"
-        self._ttl_ms = ttl_sec * 1000
+        effective_ttl = ttl_sec if ttl_sec is not None else settings.SYNC_LOCK_TTL_SEC
+        self._ttl_ms = effective_ttl * 1000
         self._token: Optional[str] = None
         self._acquired = False
 
@@ -79,21 +82,17 @@ class DistributedLock:
 
     async def acquire(
         self,
-        timeout_sec: float = 10.0,
-        retry_interval_sec: float = 0.3,
+        timeout_sec: Optional[float] = None,
+        retry_interval_sec: Optional[float] = None,
     ) -> bool:
         """
         Попытка захватить lock с ожиданием до timeout_sec.
-
-        Использует SET NX PX — атомарная операция Redis,
-        которая устанавливает ключ ТОЛЬКО если он не существует.
-        Это устраняет TOCTOU race condition (RC-2).
-
-        Returns:
-            True если lock захвачен, False если timeout.
         """
+        eff_timeout = timeout_sec if timeout_sec is not None else settings.DLOCK_DEFAULT_TIMEOUT_SEC
+        eff_retry = retry_interval_sec if retry_interval_sec is not None else settings.DLOCK_RETRY_INTERVAL_SEC
+
         self._token = str(uuid.uuid4())
-        deadline = asyncio.get_event_loop().time() + timeout_sec
+        deadline = asyncio.get_event_loop().time() + eff_timeout
 
         while asyncio.get_event_loop().time() < deadline:
             # SET key token NX PX ttl — атомарная операция
@@ -110,9 +109,9 @@ class DistributedLock:
                 return True
 
             # Lock занят — ждём и пробуем снова
-            await asyncio.sleep(retry_interval_sec)
+            await asyncio.sleep(eff_retry)
 
-        logger.warning(f"Lock acquire timeout: {self._key} after {timeout_sec}s")
+        logger.warning(f"Lock acquire timeout: {self._key} after {eff_timeout}s")
         self._token = None
         return False
 
@@ -194,18 +193,18 @@ class LockManager:
     def __init__(self, redis_client: Redis):
         self._redis = redis_client
 
-    def sync_lock(self, user_id: int, integration_id: str, ttl_sec: int = 50) -> DistributedLock:
+    def sync_lock(self, user_id: int, integration_id: str, ttl_sec: Optional[int] = None) -> DistributedLock:
         """Lock для синхронизации конкретной интеграции."""
         return DistributedLock(
             self._redis,
             f"sync:{user_id}:{integration_id}",
-            ttl_sec=ttl_sec,
+            ttl_sec=ttl_sec if ttl_sec is not None else settings.SYNC_LOCK_TTL_SEC,
         )
 
-    def snapshot_lock(self, user_id: int, ttl_sec: int = 30) -> DistributedLock:
+    def snapshot_lock(self, user_id: int, ttl_sec: Optional[int] = None) -> DistributedLock:
         """Lock для создания portfolio snapshot пользователя."""
         return DistributedLock(
             self._redis,
             f"snapshot:{user_id}",
-            ttl_sec=ttl_sec,
+            ttl_sec=ttl_sec if ttl_sec is not None else settings.SNAPSHOT_LOCK_TTL_SEC,
         )
