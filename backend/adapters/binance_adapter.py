@@ -1,14 +1,27 @@
+"""
+Binance Adapter — Integration with Binance Exchange via CCXT.
+
+This adapter handles complex balance aggregation across different Binance sub-accounts:
+- Spot, Margin, Future, Funding.
+- Simple Earn (Flexible & Locked).
+- Staking & DeFi Staking.
+- BNB Vault.
+
+It includes sophisticated deduplication logic because Binance often reports the same 
+assets across multiple API endpoints (e.g., Simple Earn assets showing up in both 
+the Spot 'LD' view and the specialized Simple Earn endpoint).
+"""
 from typing import List, Dict, Any, Optional
 import ccxt
 import asyncio
+import logging
 from adapters.base import BaseAdapter, AssetData
 from services.icons import IconResolver
 from models.assets import AssetType
-import logging
 
 logger = logging.getLogger(__name__)
 
-# Register Binance Icon Strategy (Handled by global crypto fallback mostly)
+# Registration of icon strategy for Binance assets
 IconResolver.register_strategy(
     "binance",
     lambda symbol, asset_type, original_ticker:
@@ -17,10 +30,17 @@ IconResolver.register_strategy(
 )
 
 class BinanceAdapter(BaseAdapter):
+    """
+    Adapter for Binance Exchange. 
+    Uses CCXT to fetch data and implements custom deduplication for sub-accounts.
+    """
     def get_provider_id(self) -> str:
         return "binance"
 # ... (validate_credentials remains same)
     async def validate_credentials(self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Validates API Key and Secret by attempting a lightweight fetch_balance call.
+        """
         api_key = credentials.get("api_key")
         api_secret = credentials.get("api_secret")
         
@@ -30,10 +50,8 @@ class BinanceAdapter(BaseAdapter):
                 'secret': api_secret,
                 'enableRateLimit': True
             })
-            # Lightweight check
-            # fetch_balance is an async method in ccxt.async_support, 
-            # but wait, BinanceAdapter is NOT using async_support yet?
-            # It uses loop.run_in_executor. I'll stick to that for now to avoid breaking things.
+            # ccxt.binance uses blocking calls by default; we wrap them in an executor
+            # to keep the event loop responsive.
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, exchange.fetch_balance)
             return True
@@ -42,6 +60,10 @@ class BinanceAdapter(BaseAdapter):
             return False
 
     async def fetch_balances(self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None) -> List[AssetData]:
+        """
+        Fetches balances from all available Binance sub-accounts and provides 
+        a deduplicated unified view.
+        """
         api_key = credentials.get("api_key")
         api_secret = credentials.get("api_secret")
         
@@ -52,25 +74,26 @@ class BinanceAdapter(BaseAdapter):
         })
         
         wallet_types = ['spot', 'future', 'delivery', 'funding']
-        
         loop = asyncio.get_event_loop()
         
-        # 1. Standard Wallets (Spot, Future, Delivery, Funding)
-        detailed_balances = {} # symbol -> {source: amount}
-        skipped_sources = []  # Track which optional endpoints failed
+        # detailed_balances: symbol -> {source: amount}
+        # This structure allows us to see exactly where Binance reports each asset.
+        detailed_balances = {} 
+        skipped_sources = []  
         
         def add_balance(symbol, source, amount):
             if abs(amount) < 1e-12: return
             if symbol not in detailed_balances: detailed_balances[symbol] = {}
             detailed_balances[symbol][source] = detailed_balances[symbol].get(source, 0.0) + amount
 
+        # Phase 1: Standard Wallets (Spot, Future, Delivery, Funding)
         for w_type in wallet_types:
             try:
                 params = {'type': w_type} if w_type != 'spot' else {}
                 balance_data = await loop.run_in_executor(None, lambda: exchange.fetch_balance(params))
                 total_data = balance_data.get('total', {})
                 for symbol, amount in total_data.items():
-                    # Handle LD prefix (Spot View of Flexible Earn)
+                    # 'LD' prefix handles assets visible in Spot view that actually belong to Flexible Earn
                     norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
                     add_balance(norm_symbol, f"{w_type}-{symbol}", amount)
             except Exception as e:
@@ -143,37 +166,38 @@ class BinanceAdapter(BaseAdapter):
             logger.warning(f"Could not fetch Funding assets: {e}")
             skipped_sources.append("Funding-Direct")
 
-        # --- DEDUPLICATION LOGIC ---
+        # Phase 6: Deduplication logic
+        # Binance often reports the same value in different ways (e.g., Simple Earn assets 
+        # showing up as 'LD-prefixed' in Spot and also in dedicated Simple Earn reports).
+        # We group sources into 'buckets' and take the maximum value from each bucket
+        # to ensure we don't double-count.
         final_balances = {}
         for symbol, sources in detailed_balances.items():
             logger.info(f"Binance Detail for {symbol}: {sources}")
             
-            # Bucket 1: Flexible Positions (SimpleEarn-Flexible or LD-prefixed view assets)
+            # Bucket 1: Flexible Positions
             flex_vals = [v for k, v in sources.items() if "simpleearn-flexible" in k.lower() or "-ld" in k.lower()]
             flex_total = max(flex_vals) if flex_vals else 0.0
             
-            # Bucket 2: Locked Positions & Staking & Vault
-            # BNB Vault often overlaps with SimpleEarn-Locked or Staking reports.
+            # Bucket 2: Locked Positions, Staking, and Vault
             locked_vals = [v for k, v in sources.items() if any(x in k.lower() for x in ["simpleearn-locked", "staking-", "bnb-vault"])]
             locked_total = max(locked_vals) if locked_vals else 0.0
             
-            # Bucket 3: Funding Wallet (Direct API vs fetch_balance report)
+            # Bucket 3: Funding Wallet
             funding_vals = [v for k, v in sources.items() if any(x in k.lower() for x in ["funding-", "funding_asset"])]
             funding_total = max(funding_vals) if funding_vals else 0.0
             
-            # Bucket 4: Real liquid balances and unique buckets (additive)
+            # Bucket 4: Pure Liquid Balances (Additive)
             liquid_total = 0.0
             for k, v in sources.items():
                 k_lower = k.lower()
-                # Skip things already grouped above
                 if any(x in k_lower for x in ["simpleearn-", "staking-", "funding-", "-ld", "bnb-vault", "funding_asset"]):
                     continue
-                # This includes Spot (non-LD), Future, Delivery, Margin
                 liquid_total += v
             
             total = flex_total + locked_total + funding_total + liquid_total
             
-            if abs(total) > 0.00000001:
+            if total > 1e-8:
                 final_balances[symbol] = total
 
         logger.info(f"Binance FINAL combined balances: {final_balances}")

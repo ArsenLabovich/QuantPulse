@@ -5,7 +5,6 @@ import datetime
 import sys
 import os
 
-# Ensure backend root is in sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from uuid import UUID
@@ -32,7 +31,6 @@ from services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
-# --- Infrastructure ---
 redis_client = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
 lock_manager = LockManager(redis_client)
 snapshot_service = SnapshotService(lock_manager)
@@ -52,7 +50,6 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
     session_factory = get_async_sessionmaker()
     try:
-        # 1. Fetch Integration & Decrypt Credentials
         integration, creds = await _load_integration(
             session_factory, integration_id
         )
@@ -61,13 +58,11 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
         user_id = integration.user_id
 
-        # 2. Acquire Sync Lock (atomic SET NX — eliminates RC-2)
         sync_lock = lock_manager.sync_lock(
             user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC
         )
 
         if not await sync_lock.acquire(timeout_sec=settings.SYNC_WAIT_MAX_SEC):
-            # Another task completed the sync while we were waiting
             logger.info(
                 f"Sync lock wait expired for user {user_id}. "
                 f"Assuming parallel task completed."
@@ -127,12 +122,11 @@ async def _run_sync(session_factory, integration, creds, task_instance):
     """
     Executes the main sync logic:
     1. Fetch data via Adapter
-    2. Atomic DELETE + INSERT in a single transaction (eliminates RC-4)
-    3. Snapshot AFTER commit (eliminates RC-1 and RC-3)
+    2. Atomic DELETE + INSERT in a single transaction
+    3. Snapshot creation after commit
     """
     user_id = integration.user_id
 
-    # --- Phase 1: Fetch Data from External API ---
     _update_progress(task_instance, 20, "FETCHING", "Fetching data from exchange...")
 
     from adapters.factory import AdapterFactory
@@ -141,11 +135,9 @@ async def _run_sync(session_factory, integration, creds, task_instance):
         assets_data = await adapter.fetch_balances(creds, integration.settings)
     except Exception as e:
         logger.error(f"Adapter Sync Error: {e}")
-        # Mark as progress 0 before raising so UI sees it started but failed
         _update_progress(task_instance, 0, "ERROR", str(e))
-        raise  # Let Celery handle the exception properly
+        raise
 
-    # --- Phase 2: Transform & Prepare ---
     _update_progress(
         task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets..."
     )
@@ -153,7 +145,6 @@ async def _run_sync(session_factory, integration, creds, task_instance):
     new_assets = []
     total_portfolio_value = 0.0
 
-    # Use a separate session for price tracking (doesn't affect the main transaction)
     async with session_factory() as price_db:
         for ad in assets_data:
             rate = await currency_service.get_rate(ad.currency, settings.BASE_CURRENCY)
@@ -162,7 +153,6 @@ async def _run_sync(session_factory, integration, creds, task_instance):
             usd_value = float(ad.amount) * price_usd
             total_portfolio_value += usd_value
 
-            # Price history (separate operation, doesn't block the main transaction)
             await PriceTrackingService.record_price(
                 price_db, ad.symbol, integration.provider_id, price_usd, settings.BASE_CURRENCY
             )
@@ -185,12 +175,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
                 image_url=ad.image_url,
             )
             new_assets.append(asset)
-
         await price_db.commit()
-
-    # --- Phase 3: Atomic Write (DELETE + INSERT in a single transaction) ---
-    # This eliminates RC-4: the frontend NEVER sees an empty list,
-    # because DELETE and INSERT are committed SIMULTANEOUSLY.
     _update_progress(task_instance, 85, "SAVING", "Saving to database...")
 
     async with session_factory() as db:
@@ -209,8 +194,6 @@ async def _run_sync(session_factory, integration, creds, task_instance):
         f"{integration.id}. Total: ${total_portfolio_value:,.2f}"
     )
 
-    # --- Phase 4: Snapshot (AFTER commit — eliminates RC-1 and RC-3) ---
-    # Data is now GUARANTEED to be visible to other sessions.
     _update_progress(task_instance, 92, "SNAPSHOT", "Creating portfolio snapshot...")
 
     async with session_factory() as snapshot_db:
@@ -218,7 +201,6 @@ async def _run_sync(session_factory, integration, creds, task_instance):
             snapshot_db, user_id, len(new_assets)
         )
 
-    # --- Phase 5: Finalize ---
     redis_client.set(f"sync_last_time:{user_id}", str(time.time()))
     _update_progress(task_instance, 100, "DONE", "Sync complete")
     logger.info(

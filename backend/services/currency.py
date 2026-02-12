@@ -1,4 +1,10 @@
+"""
+Currency Service — Handles exchange rates and currency conversion.
 
+This service fetches latest market rates for flat currencies (USD, EUR, GBP, etc.)
+and caches them locally for 1 hour to optimize performance and reduce API load.
+It uses 'USD' as the internal base currency for all cross-rate calculations.
+"""
 import httpx
 import logging
 import asyncio
@@ -9,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 class CurrencyService:
     """
-    Handles exchange rates and currency conversion.
-    Caches rates to minimize API calls.
+    Service for currency conversion. 
+    Implemented as a Singleton class with class-level caching.
     """
     _rates: Dict[str, float] = {"USD": 1.0}
     _last_updated: datetime = None
@@ -48,34 +54,36 @@ class CurrencyService:
 
     @classmethod
     async def refresh_rates(cls):
-        """Fetch latest rates from a public API."""
+        """
+        Fetches the latest exchange rates from a public API.
+        
+        Note on conversion: The API returns rates relative to USD (1 USD = X Currency).
+        We store them as (1 Currency = Y USD) for easier multiplication in 
+        downstream services.
+        """
         try:
-            # We use a reliable free fallback or a public finance API
-            # For this implementation, we use a simple public API: exchange-rate-api.com (no key required for /latest/USD)
+            # Using exchange-rate-api.com (public endpoint, no API key required for /latest/USD)
             async with httpx.AsyncClient() as client:
                 response = await client.get("https://open.er-api.com/v6/latest/USD", timeout=5.0)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("result") == "success":
                         raw_rates = data.get("rates", {})
-                        # The API returns USD as base, so rates[EUR] is USD/EUR. 
-                        # We want EUR -> USD, so we store inverse? 
-                        # Wait, data['rates']['EUR'] = 0.92 means 1 USD = 0.92 EUR.
-                        # So 1 EUR = 1/0.92 USD = 1.08 USD.
-                        # For our get_rate logic, it's easier to store them as USD per currency.
+                        
+                        # Inverting rates to store as 'USD per Currency unit'
                         for curr, val in raw_rates.items():
                             if val > 0:
                                 cls._rates[curr] = 1.0 / val
                         
                         cls._last_updated = datetime.now()
-                        logger.info(f"Exchange rates refreshed: EUR=${cls._rates.get('EUR', 0):.2f}, GBP=${cls._rates.get('GBP', 0):.2f}")
+                        logger.info(f"Exchange rates refreshed: EUR=${cls._rates.get('EUR', 0):.2f}")
                         return
                     
             logger.error("Failed to refresh exchange rates: Invalid API response")
         except Exception as e:
             logger.error(f"Failed to refresh exchange rates: {e}")
             
-        # Fallback hardcoded rates if API fails and we have nothing
+        # Hardcoded fallback values used only if the API call fails AND cache is empty
         if len(cls._rates) <= 1:
             cls._rates.update({
                 "EUR": 1.08,
