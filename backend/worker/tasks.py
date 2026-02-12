@@ -13,7 +13,7 @@ import ccxt
 from sqlalchemy import select, delete, func
 
 from worker.celery_app import celery_app
-from core.database import DATABASE_URL, AsyncSessionLocal, engine
+from core.database import DATABASE_URL, get_async_sessionmaker, get_async_engine, dispose_loop_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from redis import Redis
@@ -50,10 +50,11 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
     logger.info(f"Starting sync for integration {integration_id}")
     _update_progress(task_instance, 5, "INIT", "Initializing sync...")
 
+    session_factory = get_async_sessionmaker()
     try:
         # 1. Fetch Integration & Decrypt Credentials
         integration, creds = await _load_integration(
-            AsyncSessionLocal, integration_id
+            session_factory, integration_id
         )
         if integration is None or creds is None:
             return
@@ -76,13 +77,15 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
         try:
             await _run_sync(
-                AsyncSessionLocal, integration, creds, task_instance
+                session_factory, integration, creds, task_instance
             )
         finally:
             await sync_lock.release()
 
     finally:
-        pass  # No longer need to call engine.dispose() locally
+        # Crucial for Celery + Asyncio: dispose the engine for the CURRENT loop
+        # to prevent cross-loop contamination and memory leaks.
+        await dispose_loop_engine()
 
 
 async def _load_integration(session_factory, integration_id: str):
@@ -258,6 +261,7 @@ def trigger_global_sync():
     logger.info("⏰ Global Sync: Starting scheduled update for all users...")
 
     async def dispatch_all():
+        engine = get_async_engine()
         async with engine.connect() as conn:
             result = await conn.execute(
                 select(Integration.id).where(Integration.is_active == True)  # noqa: E712
@@ -267,6 +271,8 @@ def trigger_global_sync():
 
             for int_id in ids:
                 sync_integration_data.delay(str(int_id))
+
+        await dispose_loop_engine()
 
     asyncio.run(dispatch_all())
 
@@ -280,6 +286,7 @@ def cleanup_price_history():
     from models.assets import MarketPriceHistory
 
     async def run_cleanup():
+        engine = get_async_engine()
         async with engine.begin() as conn:
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
                 hours=settings.PRICE_HISTORY_KEEP_HOURS
@@ -290,5 +297,7 @@ def cleanup_price_history():
                 )
             )
             logger.info(f"Deleted {result.rowcount} old price history records.")
+
+        await dispose_loop_engine()
 
     asyncio.run(run_cleanup())
