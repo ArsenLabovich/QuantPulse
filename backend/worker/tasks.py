@@ -13,336 +13,282 @@ import ccxt
 from sqlalchemy import select, delete, func
 
 from worker.celery_app import celery_app
-from core.database import DATABASE_URL
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from core.database import DATABASE_URL, AsyncSessionLocal, engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from redis import Redis
-import os
 import time
-
-# Redis for locking/dedup
-redis_client = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
 
 from models.assets import UnifiedAsset, AssetType, PortfolioSnapshot
 from models.integration import Integration, ProviderID
 from models.user import User
 from core.security.encryption import encryption_service
+from core.config import settings
 from services.currency import currency_service
 from services.price_service import PriceTrackingService
+from services.distributed_lock import LockManager
+from services.snapshot_service import SnapshotService
 
 
 logger = logging.getLogger(__name__)
 
+# --- Infrastructure ---
+redis_client = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+lock_manager = LockManager(redis_client)
+snapshot_service = SnapshotService(lock_manager)
+
+
 async def sync_integration_data_async(integration_id: str, task_instance=None):
+    """
+    Синхронизирует данные одной интеграции.
+
+    Гарантии:
+    - Только один sync на интеграцию одновременно (DistributedLock)
+    - DELETE + INSERT активов выполняются атомарно (одна транзакция)
+    - Portfolio Snapshot создаётся ТОЛЬКО ПОСЛЕ commit данных
+    """
     logger.info(f"Starting sync for integration {integration_id}")
-    if task_instance:
-        task_instance.update_state(state='PROGRESS', meta={'current': 5, 'total': 100, 'stage': 'INIT', 'message': 'Initializing sync...'})
-    
-    # Create a local engine/session for this specific asyncio loop to avoid "Attached to different loop" errors
-    # caused by sharing the global engine across celery's asyncio.run() calls.
-    local_engine = create_async_engine(DATABASE_URL, echo=False)
-    LocalAsyncSession = sessionmaker(local_engine, class_=AsyncSession, expire_on_commit=False)
+    _update_progress(task_instance, 5, "INIT", "Initializing sync...")
 
-    async with LocalAsyncSession() as db:
+    try:
+        # 1. Fetch Integration & Decrypt Credentials
+        integration, creds = await _load_integration(
+            AsyncSessionLocal, integration_id
+        )
+        if integration is None or creds is None:
+            return
+
+        user_id = integration.user_id
+
+        # 2. Acquire Sync Lock (атомарный SET NX — устраняет RC-2)
+        sync_lock = lock_manager.sync_lock(
+            user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC
+        )
+
+        if not await sync_lock.acquire(timeout_sec=settings.SYNC_WAIT_MAX_SEC):
+            # Другая задача завершила sync пока мы ждали
+            logger.info(
+                f"Sync lock wait expired for user {user_id}. "
+                f"Assuming parallel task completed."
+            )
+            _update_progress(task_instance, 100, "DONE", "Synced (via parallel task)")
+            return
+
         try:
-            # 1. Fetch Integration
-            result = await db.execute(select(Integration).where(Integration.id == UUID(integration_id)))
-            integration = result.scalar_one_or_none()
-            
-            if not integration:
-                logger.error(f"Integration {integration_id} not found")
-                return
-
-            if integration.provider_id not in [ProviderID.binance, ProviderID.trading212, ProviderID.freedom24]:
-                logger.warning(f"Provider {integration.provider_id} not supported for sync yet")
-                return
-            
-            # 2. Decrypt Credentials
-            try:
-                decrypted_json = encryption_service.decrypt(integration.credentials)
-                creds = json.loads(decrypted_json)
-                api_key = creds.get("api_key")
-                api_secret = creds.get("api_secret")
-            except Exception as e:
-                logger.error(f"Failed to decrypt credentials: {e}")
-                return
-
-            # 2.5 Concurrency & Redundancy Check (Smart Lock)
-            user_id = integration.user_id
-            lock_key = f"sync_lock:{user_id}:{integration_id}"
-            last_sync_key = f"sync_last_time:{user_id}"
-            
-            # A. Check Lock (Is another task running?)
-            # A. Check Lock (Is another task running?)
-            # Instead of skipping immediately, we WAIT for the lock to be released.
-            # This ensures that "refresh" requests from the UI don't return "Success" 
-            # until the actual data update (running in another task) is complete.
-            wait_attempts = 0
-            while redis_client.get(lock_key):
-                if wait_attempts > 20: # Wait max 20 seconds (sync usually takes ~1-5s)
-                    logger.warning(f"Sync lock timeout for user {user_id}. Proceeding anyway (or failing).")
-                    break # Break to either fail or try to take lock
-                
-                if wait_attempts == 0:
-                     logger.info(f"Sync already in progress for user {user_id}. Waiting for completion...")
-                     if task_instance:
-                        task_instance.update_state(state='PROGRESS', meta={'message': 'Waiting for existing sync...'})
-                
-                await asyncio.sleep(1)
-                wait_attempts += 1
-                
-                # If lock is gone, we can return "Success" (assuming the other task finished successfully)
-                # But to be safe, we should probably re-check if we need to run?
-                # Actually, if we waited, it means the other task *just* finished. 
-                # So we can just return success, effectively "joining" the previous task.
-            
-            if wait_attempts > 0 and wait_attempts <= 20:
-                 logger.info(f"Existing sync finished. Returning success for redundant task.")
-                 if task_instance:
-                    task_instance.update_state(state='SUCCESS', meta={'message': 'Synced (via parallel task)'})
-                 return
-
-            # Acquire Lock (Expires in 50s to allow next 1m sync)
-            redis_client.setex(lock_key, 50, "locked")
-
-            # 3. Connect to Exchange
-            non_zero_assets = {}
-            successful_fetches = 0
-            
-            # 3. Use Adapter to Fetch Data
-            from adapters.factory import AdapterFactory
-            try:
-                adapter = AdapterFactory.get_adapter(integration.provider_id)
-                assets_data = await adapter.fetch_balances(creds, integration.settings)
-                successful_fetches = 1 # Mark as success if no exception
-            except Exception as e:
-                logger.error(f"Adapter Sync Error: {e}")
-                if task_instance:
-                    task_instance.update_state(state='FAILURE', meta={'error': f"Sync Error: {str(e)}"})
-                return
-
-            # 4. Save to DB (Delete existing, then insert new)
-            await db.execute(delete(UnifiedAsset).where(UnifiedAsset.integration_id == integration.id))
-            
-            if task_instance:
-                 task_instance.update_state(state='PROGRESS', meta={'current': 85, 'total': 100, 'stage': 'PROCESSING', 'message': f'Processing {len(assets_data)} assets...'})
-            
-            new_assets = []
-            total_portfolio_value = 0.0
-            
-            for ad in assets_data:
-                # Get exchange rate to USD
-                rate = await currency_service.get_rate(ad.currency, "USD")
-                price_native = float(ad.price)
-                price_usd = price_native * rate
-                
-                usd_value = float(ad.amount) * price_usd
-                total_portfolio_value += usd_value
-                
-                # --- PRICE HISTORY & CHANGE CALCULATION ---
-                # Record the price (Store in USD for consistent charts)
-                await PriceTrackingService.record_price(db, ad.symbol, integration.provider_id, price_usd, "USD")
-                
-                # Calculate the 24h change using moving window
-                calculated_change = await PriceTrackingService.calculate_24h_change(db, ad.symbol, integration.provider_id, price_usd)
-                
-                # Note: Currently we override whatever adapter sent (even if valid) to ensure consistency across providers as per plan.
-                final_change_24h = calculated_change
-
-                asset = UnifiedAsset(
-                    user_id=integration.user_id,
-                    integration_id=integration.id,
-                    symbol=ad.symbol,     
-                    name=ad.name,              
-                    original_name=ad.original_symbol or ad.symbol, 
-                    asset_type=ad.asset_type,
-                    amount=ad.amount,
-                    currency=ad.currency,
-                    current_price=ad.price, 
-                    change_24h=final_change_24h,
-                    usd_value=usd_value,
-                    image_url=ad.image_url
-                )
-                new_assets.append(asset)
-            
-            if new_assets:
-                if task_instance:
-                     task_instance.update_state(state='PROGRESS', meta={'current': 90, 'total': 100, 'stage': 'SAVING', 'message': 'Saving to database...'})
-                db.add_all(new_assets)
-                
-            # 5. Create Portfolio Snapshot (Deduplicated & Synchronized)
-            # Use a Per-User Snapshot Lock to prevent race conditions when multiple integrations sync
-            snapshot_lock_key = f"snapshot_lock:{integration.user_id}"
-            
-            # A. Wait for Snapshot Lock (If another integration is already snapshotting)
-            wait_attempts = 0
-            while redis_client.get(snapshot_lock_key):
-                if wait_attempts > 20: # Max 20s wait
-                    logger.warning(f"Snapshot lock timeout for user {integration.user_id}. Proceeding with risk of duplicates.")
-                    break
-                
-                if wait_attempts == 0:
-                    logger.info(f"Another integration is currently snapshotting for user {integration.user_id}. Waiting...")
-                
-                await asyncio.sleep(1)
-                wait_attempts += 1
-
-            # B. Acquire Snapshot Lock (Expires in 30s)
-            redis_client.setex(snapshot_lock_key, 30, "locked")
-
-            try:
-                # Calculate Total Net Worth and Integration Completeness
-                active_ints_result = await db.execute(
-                    select(func.count(Integration.id)).where(Integration.user_id == integration.user_id, Integration.is_active == True)
-                )
-                total_active_ints = active_ints_result.scalar() or 0
-                
-                assets_ints_result = await db.execute(
-                    select(func.count(func.distinct(UnifiedAsset.integration_id)))
-                    .where(UnifiedAsset.user_id == integration.user_id)
-                )
-                current_assets_ints = assets_ints_result.scalar() or 0
-
-                current_net_worth_result = await db.execute(
-                    select(func.sum(UnifiedAsset.usd_value))
-                    .where(UnifiedAsset.user_id == integration.user_id)
-                )
-                current_net_worth = current_net_worth_result.scalar() or 0.0
-                
-                if current_net_worth >= 0:
-                    # Check for a very recent snapshot (last 45 seconds) to avoid spam from multiple integrations
-                    recent_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=45)
-                    recent_snap_result = await db.execute(
-                        select(PortfolioSnapshot)
-                        .where(
-                            PortfolioSnapshot.user_id == integration.user_id,
-                            PortfolioSnapshot.timestamp >= recent_cutoff
-                        )
-                        .order_by(PortfolioSnapshot.timestamp.desc())
-                        .limit(1)
-                    )
-                    existing_snapshot = recent_snap_result.scalar_one_or_none()
-                    
-                    is_partial = current_assets_ints < total_active_ints
-                    
-                    # Prevent saving partial snapshots which cause massive dips in history chart.
-                    # Only save if we have data from ALL active integrations.
-                    if is_partial:
-                        logger.info(f"Skipping portfolio snapshot: Partial data ({current_assets_ints}/{total_active_ints} integrations).")
-                    else:
-                        snapshot_data = {
-                            "asset_count": len(new_assets), 
-                            "source": "worker_sync", 
-                            "integrations_count": current_assets_ints,
-                            "total_integrations": total_active_ints,
-                            "is_partial": is_partial
-                        }
-
-                        if existing_snapshot:
-                            # Update existing instead of creating new
-                            logger.info(f"Updating existing snapshot for user {integration.user_id}")
-                            existing_snapshot.total_value_usd = float(current_net_worth)
-                            existing_snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
-                            existing_snapshot.data = snapshot_data
-                        else:
-                            # Create new
-                            logger.info(f"Creating new portfolio snapshot for user {integration.user_id}")
-                            snapshot = PortfolioSnapshot(
-                                user_id=integration.user_id,
-                                total_value_usd=float(current_net_worth),
-                                data=snapshot_data
-                            )
-                            db.add(snapshot)
-                
-                await db.commit()
-            
-            finally:
-                # C. Release Snapshot Lock
-                redis_client.delete(snapshot_lock_key)
-            if task_instance:
-                task_instance.update_state(state='PROGRESS', meta={'current': 100, 'total': 100, 'stage': 'DONE', 'message': 'Sync complete'})
-            # Update Last Sync Time in Redis (for frontend & debounce)
-            redis_client.set(f"sync_last_time:{integration.user_id}", str(time.time()))
-            
-            logger.info(f"Successfully synced {len(new_assets)} assets. Total Value: ${total_portfolio_value:,.2f}")
-
-
+            await _run_sync(
+                AsyncSessionLocal, integration, creds, task_instance
+            )
         finally:
-             # Release Lock
-             if 'integration' in locals() and integration:
-                 redis_client.delete(f"sync_lock:{integration.user_id}:{integration.id}")
-             
-             # Also update last sync time if successful? 
-             # Only if we reached the end successfully.
-             # Actually, we should set last_sync_key BEFORE finally if success, 
-             # but here we just want to ensure lock release.
-             
-             await local_engine.dispose()
+            await sync_lock.release()
+
+    finally:
+        pass  # Больше не нужно делать engine.dispose() локально
+
+
+async def _load_integration(session_factory, integration_id: str):
+    """
+    Загружает интеграцию из БД и расшифровывает credentials.
+
+    Returns:
+        (Integration, dict) или (None, None) при ошибке.
+    """
+    async with session_factory() as db:
+        result = await db.execute(
+            select(Integration).where(Integration.id == UUID(integration_id))
+        )
+        integration = result.scalar_one_or_none()
+
+        if not integration:
+            logger.error(f"Integration {integration_id} not found")
+            return None, None
+
+        if integration.provider_id not in [
+            ProviderID.binance, ProviderID.trading212, ProviderID.freedom24
+        ]:
+            logger.warning(
+                f"Provider {integration.provider_id} not supported for sync yet"
+            )
+            return None, None
+
+        try:
+            decrypted_json = encryption_service.decrypt(integration.credentials)
+            creds = json.loads(decrypted_json)
+        except Exception as e:
+            logger.error(f"Failed to decrypt credentials: {e}")
+            return None, None
+
+        return integration, creds
+
+
+async def _run_sync(session_factory, integration, creds, task_instance):
+    """
+    Выполняет основную логику синхронизации:
+    1. Fetch данных через Adapter
+    2. Atomic DELETE + INSERT в одной транзакции (устраняет RC-4)
+    3. Snapshot ПОСЛЕ commit (устраняет RC-1 и RC-3)
+    """
+    user_id = integration.user_id
+
+    # --- Phase 1: Fetch Data from External API ---
+    _update_progress(task_instance, 20, "FETCHING", "Fetching data from exchange...")
+
+    from adapters.factory import AdapterFactory
+    try:
+        adapter = AdapterFactory.get_adapter(integration.provider_id)
+        assets_data = await adapter.fetch_balances(creds, integration.settings)
+    except Exception as e:
+        logger.error(f"Adapter Sync Error: {e}")
+        # Mark as progress 0 before raising so UI sees it started but failed
+        _update_progress(task_instance, 0, "ERROR", str(e))
+        raise  # Let Celery handle the exception properly
+
+    # --- Phase 2: Transform & Prepare ---
+    _update_progress(
+        task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets..."
+    )
+
+    new_assets = []
+    total_portfolio_value = 0.0
+
+    # Используем отдельную сессию для price tracking (не влияет на основную транзакцию)
+    async with session_factory() as price_db:
+        for ad in assets_data:
+            rate = await currency_service.get_rate(ad.currency, "USD")
+            price_native = float(ad.price)
+            price_usd = price_native * rate
+            usd_value = float(ad.amount) * price_usd
+            total_portfolio_value += usd_value
+
+            # Price history (отдельная операция, не блокирует основную транзакцию)
+            await PriceTrackingService.record_price(
+                price_db, ad.symbol, integration.provider_id, price_usd, "USD"
+            )
+            calculated_change = await PriceTrackingService.calculate_24h_change(
+                price_db, ad.symbol, integration.provider_id, price_usd
+            )
+
+            asset = UnifiedAsset(
+                user_id=user_id,
+                integration_id=integration.id,
+                symbol=ad.symbol,
+                name=ad.name,
+                original_name=ad.original_symbol or ad.symbol,
+                asset_type=ad.asset_type,
+                amount=ad.amount,
+                currency=ad.currency,
+                current_price=ad.price,
+                change_24h=calculated_change,
+                usd_value=usd_value,
+                image_url=ad.image_url,
+            )
+            new_assets.append(asset)
+
+        await price_db.commit()
+
+    # --- Phase 3: Atomic Write (DELETE + INSERT в одной транзакции) ---
+    # Это устраняет RC-4: фронтенд НИКОГДА не увидит пустой список,
+    # потому что DELETE и INSERT коммитятся ОДНОВРЕМЕННО.
+    _update_progress(task_instance, 85, "SAVING", "Saving to database...")
+
+    async with session_factory() as db:
+        async with db.begin():
+            await db.execute(
+                delete(UnifiedAsset).where(
+                    UnifiedAsset.integration_id == integration.id
+                )
+            )
+            if new_assets:
+                db.add_all(new_assets)
+            # auto-commit при выходе из begin()
+
+    logger.info(
+        f"Committed {len(new_assets)} assets for integration "
+        f"{integration.id}. Total: ${total_portfolio_value:,.2f}"
+    )
+
+    # --- Phase 4: Snapshot (ПОСЛЕ commit — устраняет RC-1 и RC-3) ---
+    # Теперь данные ГАРАНТИРОВАННО видны другим сессиям.
+    _update_progress(task_instance, 92, "SNAPSHOT", "Creating portfolio snapshot...")
+
+    async with session_factory() as snapshot_db:
+        await snapshot_service.create_or_update_snapshot(
+            snapshot_db, user_id, len(new_assets)
+        )
+
+    # --- Phase 5: Finalize ---
+    redis_client.set(f"sync_last_time:{user_id}", str(time.time()))
+    _update_progress(task_instance, 100, "DONE", "Sync complete")
+    logger.info(
+        f"Successfully synced {len(new_assets)} assets. "
+        f"Total Value: ${total_portfolio_value:,.2f}"
+    )
+
+
+def _update_progress(task_instance, current: int, stage: str, message: str):
+    """Helper для обновления Celery task state."""
+    if not task_instance:
+        return
+
+    task_instance.update_state(
+        state="PROGRESS",
+        meta={
+            "current": current,
+            "total": 100,
+            "stage": stage,
+            "message": message,
+        },
+    )
+
+
+# === Celery Task Wrappers ===
+
 
 @celery_app.task(bind=True, name="sync_integration_data")
 def sync_integration_data(self, integration_id: str):
-    """
-    Celery task wrapper for async sync logic
-    """
+    """Celery task wrapper for async sync logic."""
     asyncio.run(sync_integration_data_async(integration_id, self))
+
 
 @celery_app.task(name="trigger_global_sync")
 def trigger_global_sync():
     """
-    Scheduled task to trigger sync for ALL integrations.
-    This fetches all integration IDs and dispatches individual update tasks.
+    Scheduled task to trigger sync for ALL active integrations.
+    Dispatches individual sync tasks for each integration.
     """
     logger.info("⏰ Global Sync: Starting scheduled update for all users...")
-    
-    # Minimal synchronous engine for this lightweight dispatcher
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    
-    # Use sync engine just for ID lookup to avoid asyncio complexity in simple beat task
-    # Or just use the async logic inside a wrapper. 
-    # Let's use a quick synchronous check since we just need IDs.
-    
-    # Alternatively, use asyncio.run with the existing async engine? 
-    # Let's stick to the pattern used in sync_integration_data wrapper.
-    
+
     async def dispatch_all():
-        local_engine = create_async_engine(DATABASE_URL, echo=False)
-        async with local_engine.connect() as conn:
-            # Select valid integrations (e.g., Binance only for now)
-            # Select ALL active integrations
+        async with engine.connect() as conn:
             result = await conn.execute(
-                select(Integration.id).where(Integration.is_active == True)
+                select(Integration.id).where(Integration.is_active == True)  # noqa: E712
             )
             ids = result.scalars().all()
-            
             logger.info(f"⏰ Global Sync: Found {len(ids)} integrations to update.")
-            
+
             for int_id in ids:
-                # Dispatch regular sync task for each
                 sync_integration_data.delay(str(int_id))
-                
-        await local_engine.dispose()
-                
+
     asyncio.run(dispatch_all())
+
 
 @celery_app.task(name="cleanup_price_history")
 def cleanup_price_history():
-    """
-    Scheduled task to remove market price history older than 48 hours.
-    """
+    """Scheduled task to remove market price history older than 48 hours."""
     logger.info("🧹 Starting price history cleanup...")
-    
-    from sqlalchemy import delete
+
+    from sqlalchemy import delete as sa_delete
     from models.assets import MarketPriceHistory
-    
+
     async def run_cleanup():
-        local_engine = create_async_engine(DATABASE_URL, echo=False)
-        async with local_engine.begin() as conn:
-             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)
-             result = await conn.execute(
-                 delete(MarketPriceHistory).where(MarketPriceHistory.timestamp < cutoff)
-             )
-             logger.info(f"Deleted {result.rowcount} old price history records.")
-        await local_engine.dispose()
+        async with engine.begin() as conn:
+            cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+                hours=48
+            )
+            result = await conn.execute(
+                sa_delete(MarketPriceHistory).where(
+                    MarketPriceHistory.timestamp < cutoff
+                )
+            )
+            logger.info(f"Deleted {result.rowcount} old price history records.")
 
     asyncio.run(run_cleanup())

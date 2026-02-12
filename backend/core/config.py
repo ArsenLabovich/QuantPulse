@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 # 1 day
+
+    # --- Sync & Snapshot Settings ---
+    SYNC_LOCK_TTL_SEC: int = 50           # TTL для lock синхронизации интеграции
+    SYNC_WAIT_MAX_SEC: int = 20           # Макс. ожидание если sync уже идёт
+    SNAPSHOT_LOCK_TTL_SEC: int = 30       # TTL для lock snapshot
+    SNAPSHOT_DEDUP_WINDOW_SEC: int = 45   # Окно дедупликации snapshot (сек)
     
     # Validate secrets exist
     def __init__(self, **kwargs):

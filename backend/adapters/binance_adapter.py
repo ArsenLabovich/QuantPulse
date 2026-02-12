@@ -57,8 +57,9 @@ class BinanceAdapter(BaseAdapter):
         
         # 1. Standard Wallets (Spot, Future, Delivery, Funding)
         detailed_balances = {} # symbol -> {source: amount}
+        skipped_sources = []  # Track which optional endpoints failed
         
-        def add_bal(symbol, source, amount):
+        def add_balance(symbol, source, amount):
             if abs(amount) < 1e-12: return
             if symbol not in detailed_balances: detailed_balances[symbol] = {}
             detailed_balances[symbol][source] = detailed_balances[symbol].get(source, 0.0) + amount
@@ -71,7 +72,7 @@ class BinanceAdapter(BaseAdapter):
                 for symbol, amount in total_data.items():
                     # Handle LD prefix (Spot View of Flexible Earn)
                     norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                    add_bal(norm_symbol, f"{w_type}-{symbol}", amount)
+                    add_balance(norm_symbol, f"{w_type}-{symbol}", amount)
             except Exception as e:
                 logger.warning(f"Could not fetch Binance {w_type} balance: {e}")
 
@@ -82,8 +83,10 @@ class BinanceAdapter(BaseAdapter):
                 symbol = row['asset']
                 amount = float(row.get('totalAmount') or 0)
                 norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                add_bal(norm_symbol, "SimpleEarn-Flexible", amount)
-        except Exception: pass
+                add_balance(norm_symbol, "SimpleEarn-Flexible", amount)
+        except Exception as e:
+            logger.warning(f"Could not fetch Simple Earn Flexible: {e}")
+            skipped_sources.append("SimpleEarn-Flexible")
 
         # 3. Simple Earn (Locked)
         try:
@@ -92,8 +95,10 @@ class BinanceAdapter(BaseAdapter):
                 symbol = row['asset']
                 amount = float(row.get('amount') or row.get('totalAmount') or 0)
                 norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                add_bal(norm_symbol, "SimpleEarn-Locked", amount)
-        except Exception: pass
+                add_balance(norm_symbol, "SimpleEarn-Locked", amount)
+        except Exception as e:
+            logger.warning(f"Could not fetch Simple Earn Locked: {e}")
+            skipped_sources.append("SimpleEarn-Locked")
 
         # 4. Staking / DeFi / Savings (Exhaustive search)
         for p_type in ['STAKING', 'L_DEFI', 'F_DEFI']:
@@ -103,23 +108,29 @@ class BinanceAdapter(BaseAdapter):
                     symbol = row['asset']
                     amount = float(row.get('amount') or 0)
                     norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                    add_bal(norm_symbol, f"Staking-{p_type}", amount)
-            except Exception: pass
+                    add_balance(norm_symbol, f"Staking-{p_type}", amount)
+            except Exception as e:
+                logger.debug(f"Could not fetch Staking ({p_type}): {e}")
+                skipped_sources.append(f"Staking-{p_type}")
 
         # 5. BNB Vault & Margin
         try:
             vault = await loop.run_in_executor(None, exchange.sapi_get_bnb_vault_account)
             amount = float(vault.get('totalAmount') or 0)
-            add_bal('BNB', "BNB-Vault", amount)
-        except Exception: pass
+            add_balance('BNB', "BNB-Vault", amount)
+        except Exception as e:
+            logger.debug(f"Could not fetch BNB Vault: {e}")
+            skipped_sources.append("BNB-Vault")
 
         try:
             margin = await loop.run_in_executor(None, exchange.sapi_get_margin_account)
             for asset_info in margin.get('userAssets', []):
                 asset = asset_info['asset']
                 net_amount = float(asset_info['netAsset'])
-                add_bal(asset, "Cross-Margin", net_amount)
-        except Exception: pass
+                add_balance(asset, "Cross-Margin", net_amount)
+        except Exception as e:
+            logger.warning(f"Could not fetch Margin account: {e}")
+            skipped_sources.append("Cross-Margin")
 
         # 6. Direct Funding Assets
         try:
@@ -127,8 +138,10 @@ class BinanceAdapter(BaseAdapter):
             for item in funding:
                 asset = item['asset']
                 amount = float(item['free']) + float(item['freeze']) + float(item['withdrawing'])
-                add_bal(asset, "Funding-Direct", amount)
-        except Exception: pass
+                add_balance(asset, "Funding-Direct", amount)
+        except Exception as e:
+            logger.warning(f"Could not fetch Funding assets: {e}")
+            skipped_sources.append("Funding-Direct")
 
         # --- DEDUPLICATION LOGIC ---
         final_balances = {}
@@ -164,6 +177,8 @@ class BinanceAdapter(BaseAdapter):
                 final_balances[symbol] = total
 
         logger.info(f"Binance FINAL combined balances: {final_balances}")
+        if skipped_sources:
+            logger.warning(f"Binance sync completed with {len(skipped_sources)} skipped sources: {skipped_sources}")
 
         # Fetch Tickers
         tickers = await loop.run_in_executor(None, exchange.fetch_tickers)
