@@ -1,13 +1,13 @@
 """
-Portfolio Snapshot Service — оркестрация создания снимков портфеля.
+Portfolio Snapshot Service — orchestrates the creation of portfolio snapshots.
 
-Отвечает за:
-1. Проверку completeness (все ли интеграции синхронизированы)
-2. Deduplication (45-секундное окно, чтобы не создавать спам)
-3. Атомарное создание/обновление snapshot
-4. Использование DistributedLock для предотвращения race conditions
+Responsible for:
+1. Completeness check (ensures all integrations are synced)
+2. Deduplication (45-second window to prevent snapshot spam)
+3. Atomic snapshot creation/update
+4. Use of DistributedLock to prevent race conditions
 
-Вынесено из tasks.py согласно SRP (Single Responsibility Principle).
+Extracted from tasks.py following the Single Responsibility Principle (SRP).
 """
 
 import datetime
@@ -29,12 +29,12 @@ logger = logging.getLogger(__name__)
 
 class SnapshotService:
     """
-    Сервис для создания Portfolio Snapshot.
+    Service for creating Portfolio Snapshots.
 
-    Гарантирует:
-    - Snapshot создаётся ТОЛЬКО когда данные всех интеграций committed
-    - Только ОДИН snapshot на пользователя в пределах dedup-окна
-    - Partial snapshots НЕ записываются (предотвращает провалы в графике)
+    Guarantees:
+    - Snapshot is created ONLY when data from all integrations is committed
+    - Only ONE snapshot per user within the deduplication window
+    - Partial snapshots are NOT recorded (prevents gaps in the chart)
     """
 
     def __init__(self, lock_manager: LockManager):
@@ -47,18 +47,18 @@ class SnapshotService:
         new_assets_count: int,
     ) -> Optional[PortfolioSnapshot]:
         """
-        Создаёт или обновляет portfolio snapshot для пользователя.
+        Creates or updates a portfolio snapshot for the user.
 
-        Этот метод должен вызываться ТОЛЬКО ПОСЛЕ того, как
-        данные интеграции уже committed в БД.
+        This method should be called ONLY AFTER
+        integration data has already been committed to the DB.
 
         Args:
-            db: Async database session (должна быть НОВОЙ, не из той же транзакции)
-            user_id: ID пользователя
-            new_assets_count: Количество активов в последней синхронизации
+            db: Async database session (must be NEW, not from the same transaction)
+            user_id: User ID
+            new_assets_count: Asset count in the latest sync
 
         Returns:
-            PortfolioSnapshot если создан/обновлён, None если пропущен.
+            PortfolioSnapshot if created/updated, None if skipped.
         """
         lock = self._lock_manager.snapshot_lock(user_id)
 
@@ -79,9 +79,9 @@ class SnapshotService:
         user_id: int,
         new_assets_count: int,
     ) -> Optional[PortfolioSnapshot]:
-        """Внутренняя логика создания snapshot, выполняющаяся под lock."""
+        """Internal snapshot creation logic running under a lock."""
 
-        # 1. Проверяем completeness — все ли интеграции синхронизировались
+        # 1. Check completeness — ensure all integrations have been synced
         completeness = await self._check_completeness(db, user_id)
 
         if completeness["is_partial"]:
@@ -91,17 +91,17 @@ class SnapshotService:
             )
             return None
 
-        # 2. Считаем текущий net worth
+        # 2. Calculate current net worth
         net_worth = await self._calculate_net_worth(db, user_id)
 
         if net_worth is None or net_worth < 0:
             logger.warning(f"Invalid net worth for user {user_id}: {net_worth}")
             return None
 
-        # 3. Deduplication — ищем свежий snapshot в пределах окна
+        # 3. Deduplication — look for a recent snapshot within the window
         existing = await self._find_recent_snapshot(db, user_id)
 
-        # 4. Формируем metadata
+        # 4. Form metadata
         snapshot_data: Dict[str, Any] = {
             "asset_count": new_assets_count,
             "source": "worker_sync",
@@ -110,7 +110,7 @@ class SnapshotService:
             "is_partial": False,
         }
 
-        # 5. Создаём или обновляем
+        # 5. Create or update
         if existing:
             snapshot = await self._update_existing_snapshot(
                 existing, net_worth, snapshot_data
@@ -133,13 +133,13 @@ class SnapshotService:
         self, db: AsyncSession, user_id: int
     ) -> Dict[str, Any]:
         """
-        Проверяет, все ли активные интеграции пользователя
-        имеют данные в unified_assets.
+        Checks if all of the user's active integrations
+        have data in unified_assets.
 
         Returns:
-            Dict с ключами: total_count, synced_count, is_partial
+            Dict with keys: total_count, synced_count, is_partial
         """
-        # Количество активных интеграций
+        # Number of active integrations
         total_result = await db.execute(
             select(func.count(Integration.id)).where(
                 Integration.user_id == user_id,
@@ -148,7 +148,7 @@ class SnapshotService:
         )
         total_count = total_result.scalar() or 0
 
-        # Количество интеграций, у которых есть данные в unified_assets
+        # Number of integrations that have data in unified_assets
         synced_result = await db.execute(
             select(func.count(func.distinct(UnifiedAsset.integration_id))).where(
                 UnifiedAsset.user_id == user_id
@@ -165,7 +165,7 @@ class SnapshotService:
     async def _calculate_net_worth(
         self, db: AsyncSession, user_id: int
     ) -> Optional[float]:
-        """Считает суммарную USD-стоимость всех активов пользователя."""
+        """Calculates the total USD value of all the user's assets."""
         result = await db.execute(
             select(func.sum(UnifiedAsset.usd_value)).where(
                 UnifiedAsset.user_id == user_id
@@ -177,7 +177,7 @@ class SnapshotService:
     async def _find_recent_snapshot(
         self, db: AsyncSession, user_id: int
     ) -> Optional[PortfolioSnapshot]:
-        """Ищет snapshot в пределах dedup-окна."""
+        """Searches for a snapshot within the deduplication window."""
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             seconds=settings.SNAPSHOT_DEDUP_WINDOW_SEC
         )
@@ -198,7 +198,7 @@ class SnapshotService:
         net_worth: float,
         data: Dict[str, Any],
     ) -> PortfolioSnapshot:
-        """Обновляет существующий snapshot."""
+        """Updates an existing snapshot."""
         snapshot.total_value_usd = net_worth
         snapshot.timestamp = datetime.datetime.now(datetime.timezone.utc)
         snapshot.data = data
@@ -211,7 +211,7 @@ class SnapshotService:
         net_worth: float,
         data: Dict[str, Any],
     ) -> PortfolioSnapshot:
-        """Создаёт новый snapshot."""
+        """Creates a new snapshot."""
         snapshot = PortfolioSnapshot(
             user_id=user_id,
             total_value_usd=net_worth,

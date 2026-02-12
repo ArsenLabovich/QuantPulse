@@ -14,15 +14,15 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 # 1 day
 
     # --- Sync & Snapshot Settings ---
-    SYNC_LOCK_TTL_SEC: int = 50           # TTL для lock синхронизации интеграции
-    SYNC_WAIT_MAX_SEC: int = 20           # Макс. ожидание если sync уже идёт
-    SNAPSHOT_LOCK_TTL_SEC: int = 30       # TTL для lock snapshot
-    SNAPSHOT_LOCK_TIMEOUT_SEC: float = 25.0 # Тайм-аут ожидания snapshot lock
-    SNAPSHOT_DEDUP_WINDOW_SEC: int = 45   # Окно дедупликации snapshot (сек)
+    SYNC_LOCK_TTL_SEC: int = 50           # TTL for integration sync lock
+    SYNC_WAIT_MAX_SEC: int = 20           # Max wait time if sync is already in progress
+    SNAPSHOT_LOCK_TTL_SEC: int = 30       # TTL for snapshot lock
+    SNAPSHOT_LOCK_TIMEOUT_SEC: float = 25.0 # Timeout for waiting for snapshot lock
+    SNAPSHOT_DEDUP_WINDOW_SEC: int = 45   # Snapshot deduplication window (seconds)
     
     # --- Data Retention & General ---
-    PRICE_HISTORY_KEEP_HOURS: int = 48     # Хранение истории цен
-    BASE_CURRENCY: str = "USD"            # Основная валюта системы
+    PRICE_HISTORY_KEEP_HOURS: int = 48     # Price history retention hours
+    BASE_CURRENCY: str = "USD"            # The system's base currency
     
     # --- Distributed Lock Defaults ---
     DLOCK_RETRY_INTERVAL_SEC: float = 0.3

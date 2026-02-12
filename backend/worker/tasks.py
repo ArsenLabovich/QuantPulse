@@ -40,12 +40,12 @@ snapshot_service = SnapshotService(lock_manager)
 
 async def sync_integration_data_async(integration_id: str, task_instance=None):
     """
-    Синхронизирует данные одной интеграции.
+    Syncs data for a single integration.
 
-    Гарантии:
-    - Только один sync на интеграцию одновременно (DistributedLock)
-    - DELETE + INSERT активов выполняются атомарно (одна транзакция)
-    - Portfolio Snapshot создаётся ТОЛЬКО ПОСЛЕ commit данных
+    Guarantees:
+    - Only one sync per integration at a time (DistributedLock)
+    - Asset DELETE + INSERT operations are atomic (single transaction)
+    - Portfolio Snapshot is created ONLY AFTER data commit
     """
     logger.info(f"Starting sync for integration {integration_id}")
     _update_progress(task_instance, 5, "INIT", "Initializing sync...")
@@ -60,13 +60,13 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
         user_id = integration.user_id
 
-        # 2. Acquire Sync Lock (атомарный SET NX — устраняет RC-2)
+        # 2. Acquire Sync Lock (atomic SET NX — eliminates RC-2)
         sync_lock = lock_manager.sync_lock(
             user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC
         )
 
         if not await sync_lock.acquire(timeout_sec=settings.SYNC_WAIT_MAX_SEC):
-            # Другая задача завершила sync пока мы ждали
+            # Another task completed the sync while we were waiting
             logger.info(
                 f"Sync lock wait expired for user {user_id}. "
                 f"Assuming parallel task completed."
@@ -82,15 +82,15 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
             await sync_lock.release()
 
     finally:
-        pass  # Больше не нужно делать engine.dispose() локально
+        pass  # No longer need to call engine.dispose() locally
 
 
 async def _load_integration(session_factory, integration_id: str):
     """
-    Загружает интеграцию из БД и расшифровывает credentials.
+    Loads the integration from the DB and decrypts credentials.
 
     Returns:
-        (Integration, dict) или (None, None) при ошибке.
+        (Integration, dict) or (None, None) on error.
     """
     async with session_factory() as db:
         result = await db.execute(
@@ -122,10 +122,10 @@ async def _load_integration(session_factory, integration_id: str):
 
 async def _run_sync(session_factory, integration, creds, task_instance):
     """
-    Выполняет основную логику синхронизации:
-    1. Fetch данных через Adapter
-    2. Atomic DELETE + INSERT в одной транзакции (устраняет RC-4)
-    3. Snapshot ПОСЛЕ commit (устраняет RC-1 и RC-3)
+    Executes the main sync logic:
+    1. Fetch data via Adapter
+    2. Atomic DELETE + INSERT in a single transaction (eliminates RC-4)
+    3. Snapshot AFTER commit (eliminates RC-1 and RC-3)
     """
     user_id = integration.user_id
 
@@ -150,7 +150,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
     new_assets = []
     total_portfolio_value = 0.0
 
-    # Используем отдельную сессию для price tracking (не влияет на основную транзакцию)
+    # Use a separate session for price tracking (doesn't affect the main transaction)
     async with session_factory() as price_db:
         for ad in assets_data:
             rate = await currency_service.get_rate(ad.currency, settings.BASE_CURRENCY)
@@ -159,7 +159,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
             usd_value = float(ad.amount) * price_usd
             total_portfolio_value += usd_value
 
-            # Price history (отдельная операция, не блокирует основную транзакцию)
+            # Price history (separate operation, doesn't block the main transaction)
             await PriceTrackingService.record_price(
                 price_db, ad.symbol, integration.provider_id, price_usd, settings.BASE_CURRENCY
             )
@@ -185,9 +185,9 @@ async def _run_sync(session_factory, integration, creds, task_instance):
 
         await price_db.commit()
 
-    # --- Phase 3: Atomic Write (DELETE + INSERT в одной транзакции) ---
-    # Это устраняет RC-4: фронтенд НИКОГДА не увидит пустой список,
-    # потому что DELETE и INSERT коммитятся ОДНОВРЕМЕННО.
+    # --- Phase 3: Atomic Write (DELETE + INSERT in a single transaction) ---
+    # This eliminates RC-4: the frontend NEVER sees an empty list,
+    # because DELETE and INSERT are committed SIMULTANEOUSLY.
     _update_progress(task_instance, 85, "SAVING", "Saving to database...")
 
     async with session_factory() as db:
@@ -199,15 +199,15 @@ async def _run_sync(session_factory, integration, creds, task_instance):
             )
             if new_assets:
                 db.add_all(new_assets)
-            # auto-commit при выходе из begin()
+            # auto-commit on exit from begin()
 
     logger.info(
         f"Committed {len(new_assets)} assets for integration "
         f"{integration.id}. Total: ${total_portfolio_value:,.2f}"
     )
 
-    # --- Phase 4: Snapshot (ПОСЛЕ commit — устраняет RC-1 и RC-3) ---
-    # Теперь данные ГАРАНТИРОВАННО видны другим сессиям.
+    # --- Phase 4: Snapshot (AFTER commit — eliminates RC-1 and RC-3) ---
+    # Data is now GUARANTEED to be visible to other sessions.
     _update_progress(task_instance, 92, "SNAPSHOT", "Creating portfolio snapshot...")
 
     async with session_factory() as snapshot_db:
@@ -225,7 +225,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
 
 
 def _update_progress(task_instance, current: int, stage: str, message: str):
-    """Helper для обновления Celery task state."""
+    """Helper for updating Celery task state."""
     if not task_instance:
         return
 

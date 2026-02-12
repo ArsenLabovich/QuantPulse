@@ -1,12 +1,12 @@
 """
-Distributed Lock Manager — атомарные Redis-блокировки.
+Distributed Lock Manager — atomic Redis locks.
 
-Решает проблему TOCTOU (Time-of-Check-Time-of-Use):
-- acquire() использует SET NX PX (атомарная операция)
-- release() использует Lua-скрипт для проверки owner + удаления
-- Каждый lock идентифицируется уникальным token, предотвращающим чужой unlock
+Solves the TOCTOU (Time-of-Check-Time-of-Use) problem:
+- acquire() uses SET NX PX (atomic operation)
+- release() uses a Lua script for owner verification + deletion
+- Each lock is identified by a unique token preventing accidental unlock by others
 
-Использование:
+Usage:
     lock = DistributedLock(redis_client, "my_resource", ttl_sec=30)
     if await lock.acquire():
         try:
@@ -14,7 +14,7 @@ Distributed Lock Manager — атомарные Redis-блокировки.
         finally:
             await lock.release()
 
-    # Или через контекстный менеджер:
+    # Or via context manager:
     async with DistributedLock(redis_client, "my_resource") as lock:
         if lock.acquired:
             ... # critical section
@@ -32,9 +32,9 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
-# Lua-скрипт: Удаляем ключ ТОЛЬКО если value совпадает с нашим token.
-# Это предотвращает ситуацию, когда Worker A отпускает lock Worker B
-# потому что TTL истек и B перехватил lock.
+# Lua script: Delete key ONLY if value matches our token.
+# This prevents a situation where Worker A releases Worker B's lock
+# because the TTL expired and B acquired the lock.
 _RELEASE_SCRIPT = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
     return redis.call("DEL", KEYS[1])
@@ -42,7 +42,7 @@ end
 return 0
 """
 
-# Lua-скрипт: Продлеваем TTL ТОЛЬКО если мы всё ещё owner.
+# Lua script: Extend TTL ONLY if we are still the owner.
 _EXTEND_SCRIPT = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
     return redis.call("PEXPIRE", KEYS[1], ARGV[2])
@@ -53,10 +53,10 @@ return 0
 
 class DistributedLock:
     """
-    Redis-based distributed lock с owner verification.
+    Redis-based distributed lock with owner verification.
 
-    Каждый экземпляр генерирует уникальный token при acquire().
-    Только владелец token может выполнить release() или extend().
+    Each instance generates a unique token during acquire().
+    Only the token owner can perform release() or extend().
     """
 
     def __init__(
@@ -86,7 +86,7 @@ class DistributedLock:
         retry_interval_sec: Optional[float] = None,
     ) -> bool:
         """
-        Попытка захватить lock с ожиданием до timeout_sec.
+        Attempts to acquire the lock with a wait up to timeout_sec.
         """
         eff_timeout = timeout_sec if timeout_sec is not None else settings.DLOCK_DEFAULT_TIMEOUT_SEC
         eff_retry = retry_interval_sec if retry_interval_sec is not None else settings.DLOCK_RETRY_INTERVAL_SEC
@@ -95,12 +95,12 @@ class DistributedLock:
         deadline = asyncio.get_event_loop().time() + eff_timeout
 
         while asyncio.get_event_loop().time() < deadline:
-            # SET key token NX PX ttl — атомарная операция
+            # SET key token NX PX ttl — atomic operation
             result = self._redis.set(
                 self._key,
                 self._token,
-                nx=True,   # Только если ключ НЕ существует
-                px=self._ttl_ms,  # TTL в миллисекундах
+                nx=True,   # Only if key DOES NOT exist
+                px=self._ttl_ms,  # TTL in milliseconds
             )
 
             if result:
@@ -108,7 +108,7 @@ class DistributedLock:
                 logger.debug(f"Lock acquired: {self._key} (token={self._token[:8]}...)")
                 return True
 
-            # Lock занят — ждём и пробуем снова
+            # Lock is busy — wait and retry
             await asyncio.sleep(eff_retry)
 
         logger.warning(f"Lock acquire timeout: {self._key} after {eff_timeout}s")
@@ -117,24 +117,24 @@ class DistributedLock:
 
     async def release(self) -> bool:
         """
-        Освобождает lock ТОЛЬКО если мы являемся владельцем.
+        Releases the lock ONLY if we are the owner.
 
-        Использует Lua-скрипт для атомарной проверки owner + удаления.
-        Это предотвращает ситуацию, когда:
-        1. Worker A держит lock
-        2. TTL истекает
-        3. Worker B захватывает lock
-        4. Worker A пытается release() → БЕЗ Lua он удалил бы lock Worker B!
+        Uses a Lua script for atomic owner verification + deletion.
+        This prevents a situation where:
+        1. Worker A holds the lock
+        2. TTL expires
+        3. Worker B acquires the lock
+        4. Worker A tries to release() → WITHOUT Lua, it would delete Worker B's lock!
 
         Returns:
-            True если lock был нашим и мы его отпустили.
+            True if the lock was ours and we released it.
         """
         if not self._token:
             return False
 
         result = self._redis.eval(
             _RELEASE_SCRIPT,
-            1,           # Количество KEYS
+            1,           # Number of KEYS
             self._key,   # KEYS[1]
             self._token, # ARGV[1]
         )
@@ -151,9 +151,9 @@ class DistributedLock:
 
     async def extend(self, additional_sec: int = 10) -> bool:
         """
-        Продлевает TTL lock'а, если мы всё ещё owner.
+        Extends the lock TTL if we are still the owner.
 
-        Полезно для долгих операций, чтобы lock не истёк преждевременно.
+        Useful for long operations to prevent premature lock expiration.
         """
         if not self._token:
             return False
@@ -184,17 +184,17 @@ class DistributedLock:
 
 class LockManager:
     """
-    Фабрика для создания именованных DistributedLock.
+    Factory for creating named DistributedLocks.
 
-    Инкапсулирует Redis-клиент и предоставляет
-    чистый интерфейс для получения lock по имени ресурса.
+    Encapsulates the Redis client and provides
+    a clean interface for obtaining a lock by resource name.
     """
 
     def __init__(self, redis_client: Redis):
         self._redis = redis_client
 
     def sync_lock(self, user_id: int, integration_id: str, ttl_sec: Optional[int] = None) -> DistributedLock:
-        """Lock для синхронизации конкретной интеграции."""
+        """Lock for syncing a specific integration."""
         return DistributedLock(
             self._redis,
             f"sync:{user_id}:{integration_id}",
@@ -202,7 +202,7 @@ class LockManager:
         )
 
     def snapshot_lock(self, user_id: int, ttl_sec: Optional[int] = None) -> DistributedLock:
-        """Lock для создания portfolio snapshot пользователя."""
+        """Lock for creating a user's portfolio snapshot."""
         return DistributedLock(
             self._redis,
             f"snapshot:{user_id}",

@@ -7,10 +7,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
-    pool_size=20,          # Базовый пул соединений
-    max_overflow=10,       # Дополнительные соединения при нагрузке
-    pool_pre_ping=True,    # Проверка соединения перед использованием
-    pool_recycle=3600      # Переоткрытие соединений каждый час
+    pool_size=20,          # Base connection pool size
+    max_overflow=10,       # Extra connections during peak loads
+    pool_pre_ping=True,    # Check connection validity before use
+    pool_recycle=3600      # Recycle connections every hour
 )
 
 AsyncSessionLocal = sessionmaker(
