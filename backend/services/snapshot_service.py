@@ -1,5 +1,4 @@
-"""
-Portfolio Snapshot Service — orchestrates the creation of portfolio snapshots.
+"""Portfolio Snapshot Service — orchestrates the creation of portfolio snapshots.
 
 Responsible for:
 1. Completeness check (ensures all integrations are synced)
@@ -28,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class SnapshotService:
-    """
-    Service for creating Portfolio Snapshots.
+    """Service for creating Portfolio Snapshots.
 
     Guarantees:
     - Snapshot is created ONLY when data from all integrations is committed
@@ -46,8 +44,7 @@ class SnapshotService:
         user_id: int,
         new_assets_count: int,
     ) -> Optional[PortfolioSnapshot]:
-        """
-        Creates or updates a portfolio snapshot for the user.
+        """Creates or updates a portfolio snapshot for the user.
 
         This method should be called ONLY AFTER
         integration data has already been committed to the DB.
@@ -67,9 +64,7 @@ class SnapshotService:
             return None
 
         try:
-            return await self._create_snapshot_under_lock(
-                db, user_id, new_assets_count
-            )
+            return await self._create_snapshot_under_lock(db, user_id, new_assets_count)
         finally:
             await lock.release()
 
@@ -80,7 +75,6 @@ class SnapshotService:
         new_assets_count: int,
     ) -> Optional[PortfolioSnapshot]:
         """Internal snapshot creation logic running under a lock."""
-
         # 1. Check completeness — ensure all integrations have been synced
         completeness = await self._check_completeness(db, user_id)
 
@@ -112,29 +106,18 @@ class SnapshotService:
 
         # 5. Create or update
         if existing:
-            snapshot = await self._update_existing_snapshot(
-                existing, net_worth, snapshot_data
-            )
+            snapshot = await self._update_existing_snapshot(existing, net_worth, snapshot_data)
         else:
-            snapshot = self._create_new_snapshot(
-                db, user_id, net_worth, snapshot_data
-            )
+            snapshot = self._create_new_snapshot(db, user_id, net_worth, snapshot_data)
 
         await db.commit()
-        logger.info(
-            f"Snapshot {'updated' if existing else 'created'} for user {user_id}: "
-            f"${float(net_worth):,.2f}"
-        )
+        logger.info(f"Snapshot {'updated' if existing else 'created'} for user {user_id}: ${float(net_worth):,.2f}")
         return snapshot
 
     # --- Private Helpers ---
 
-    async def _check_completeness(
-        self, db: AsyncSession, user_id: int
-    ) -> Dict[str, Any]:
-        """
-        Checks if all of the user's active integrations
-        have data in unified_assets.
+    async def _check_completeness(self, db: AsyncSession, user_id: int) -> Dict[str, Any]:
+        """Checks if all of the user's active integrations have data in unified_assets.
 
         Returns:
             Dict with keys: total_count, synced_count, is_partial
@@ -150,9 +133,7 @@ class SnapshotService:
 
         # Number of integrations that have data in unified_assets
         synced_result = await db.execute(
-            select(func.count(func.distinct(UnifiedAsset.integration_id))).where(
-                UnifiedAsset.user_id == user_id
-            )
+            select(func.count(func.distinct(UnifiedAsset.integration_id))).where(UnifiedAsset.user_id == user_id)
         )
         synced_count = synced_result.scalar() or 0
 
@@ -162,21 +143,13 @@ class SnapshotService:
             "is_partial": synced_count < total_count,
         }
 
-    async def _calculate_net_worth(
-        self, db: AsyncSession, user_id: int
-    ) -> Optional[float]:
+    async def _calculate_net_worth(self, db: AsyncSession, user_id: int) -> Optional[float]:
         """Calculates the total USD value of all the user's assets."""
-        result = await db.execute(
-            select(func.sum(UnifiedAsset.usd_value)).where(
-                UnifiedAsset.user_id == user_id
-            )
-        )
+        result = await db.execute(select(func.sum(UnifiedAsset.usd_value)).where(UnifiedAsset.user_id == user_id))
         value = result.scalar()
         return float(value) if value is not None else None
 
-    async def _find_recent_snapshot(
-        self, db: AsyncSession, user_id: int
-    ) -> Optional[PortfolioSnapshot]:
+    async def _find_recent_snapshot(self, db: AsyncSession, user_id: int) -> Optional[PortfolioSnapshot]:
         """Searches for a snapshot within the deduplication window."""
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             seconds=settings.SNAPSHOT_DEDUP_WINDOW_SEC

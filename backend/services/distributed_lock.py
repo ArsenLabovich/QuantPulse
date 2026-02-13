@@ -1,5 +1,4 @@
-"""
-Distributed Lock Manager — atomic Redis locks.
+"""Distributed Lock Manager — atomic Redis locks.
 
 Solves the TOCTOU (Time-of-Check-Time-of-Use) problem:
 - acquire() uses SET NX PX (atomic operation)
@@ -52,8 +51,7 @@ return 0
 
 
 class DistributedLock:
-    """
-    Redis-based distributed lock with owner verification.
+    """Redis-based distributed lock with owner verification.
 
     Each instance generates a unique token during acquire().
     Only the token owner can perform release() or extend().
@@ -85,9 +83,7 @@ class DistributedLock:
         timeout_sec: Optional[float] = None,
         retry_interval_sec: Optional[float] = None,
     ) -> bool:
-        """
-        Attempts to acquire the lock with a wait up to timeout_sec.
-        """
+        """Attempts to acquire the lock with a wait up to timeout_sec."""
         eff_timeout = timeout_sec if timeout_sec is not None else settings.DLOCK_DEFAULT_TIMEOUT_SEC
         eff_retry = retry_interval_sec if retry_interval_sec is not None else settings.DLOCK_RETRY_INTERVAL_SEC
 
@@ -99,7 +95,7 @@ class DistributedLock:
             result = self._redis.set(
                 self._key,
                 self._token,
-                nx=True,   # Only if key DOES NOT exist
+                nx=True,  # Only if key DOES NOT exist
                 px=self._ttl_ms,  # TTL in milliseconds
             )
 
@@ -116,8 +112,7 @@ class DistributedLock:
         return False
 
     async def release(self) -> bool:
-        """
-        Releases the lock ONLY if we are the owner.
+        """Releases the lock ONLY if we are the owner.
 
         Uses a Lua script for atomic owner verification + deletion.
         This prevents a situation where:
@@ -134,9 +129,9 @@ class DistributedLock:
 
         result = self._redis.eval(
             _RELEASE_SCRIPT,
-            1,           # Number of KEYS
-            self._key,   # KEYS[1]
-            self._token, # ARGV[1]
+            1,  # Number of KEYS
+            self._key,  # KEYS[1]
+            self._token,  # ARGV[1]
         )
 
         released = bool(result)
@@ -150,8 +145,7 @@ class DistributedLock:
         return released
 
     async def extend(self, additional_sec: int = 10) -> bool:
-        """
-        Extends the lock TTL if we are still the owner.
+        """Extends the lock TTL if we are still the owner.
 
         Useful for long operations to prevent premature lock expiration.
         """
@@ -183,8 +177,7 @@ class DistributedLock:
 
 
 class LockManager:
-    """
-    Factory for creating named DistributedLocks.
+    """Factory for creating named DistributedLocks.
 
     Encapsulates the Redis client and provides
     a clean interface for obtaining a lock by resource name.

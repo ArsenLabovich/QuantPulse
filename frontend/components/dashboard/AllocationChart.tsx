@@ -1,15 +1,8 @@
 "use client";
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { motion } from "framer-motion";
+import { AllocationItem } from '@/types/dashboard';
 
-interface AllocationItem {
-    name: string;
-    value: number;
-    percentage: number;
-    color?: string;
-    [key: string]: any;
-}
 
 interface AllocationChartProps {
     data: AllocationItem[];
@@ -59,6 +52,7 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
                         <Tooltip
                             contentStyle={{ backgroundColor: '#2A2E39', border: 'none', borderRadius: '8px', color: '#fff' }}
                             itemStyle={{ color: '#fff' }}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']}
                         />
                         <Legend
@@ -66,7 +60,7 @@ export function AllocationChart({ data, isLoading }: AllocationChartProps) {
                             align="left"
                             layout="horizontal"
                             wrapperStyle={{ paddingTop: "20px", fontSize: '10px' }}
-                            formatter={(value, entry: any) => {
+                            formatter={(value) => {
                                 const item = chartData.find(i => i.name === value);
                                 return (
                                     <span className="text-[#C0C4CC] ml-1 mr-2">

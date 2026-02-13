@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -85,10 +84,8 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
     const [loading, setLoading] = useState(false);
 
     const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [passwordError, setPasswordError] = useState("");
 
-    const router = useRouter();
     const { login } = useAuth();
 
     // Real-time validation
@@ -178,14 +175,16 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
 
                 login(response.data.access_token, response.data.refresh_token);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             let errorMessage = "An unexpected error occurred";
-            if (err.response) {
-                const detail = err.response.data?.detail;
+            const axiosError = err as { response?: { data?: { detail?: string | { msg: string }[] | object } }; request?: unknown; message?: string };
+
+            if (axiosError.response) {
+                const detail = axiosError.response.data?.detail;
                 if (typeof detail === "string") {
                     errorMessage = detail;
                 } else if (Array.isArray(detail)) {
-                    errorMessage = detail.map((e: any) => e.msg).join(", ");
+                    errorMessage = detail.map((e: { msg: string }) => e.msg).join(", ");
                 } else if (detail && typeof detail === "object") {
                     errorMessage = JSON.stringify(detail);
                 } else if (mode === "login") {
@@ -193,10 +192,10 @@ export function AuthTabs({ initialMode = "login" }: { initialMode?: AuthMode }) 
                 } else {
                     errorMessage = "Registration failed. Please try again.";
                 }
-            } else if (err.request) {
+            } else if (axiosError.request) {
                 errorMessage = "Network error. Please check your connection.";
             } else {
-                errorMessage = err.message || "Something went wrong.";
+                errorMessage = axiosError.message || "Something went wrong.";
             }
             setError(errorMessage);
         } finally {

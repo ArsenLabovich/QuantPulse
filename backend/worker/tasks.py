@@ -1,3 +1,9 @@
+"""Worker Tasks — Celery task definitions for background processing.
+
+This module contains the core synchronization logic, price tracking updates,
+and scheduled cleanup tasks.
+"""
+
 import asyncio
 import json
 import logging
@@ -8,19 +14,15 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from uuid import UUID
-import ccxt
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete
 
 from worker.celery_app import celery_app
-from core.database import DATABASE_URL, get_async_sessionmaker, get_async_engine, dispose_loop_engine
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker
+from core.database import get_async_sessionmaker, get_async_engine, dispose_loop_engine
 from redis import Redis
 import time
 
-from models.assets import UnifiedAsset, AssetType, PortfolioSnapshot
+from models.assets import UnifiedAsset
 from models.integration import Integration, ProviderID
-from models.user import User
 from core.security.encryption import encryption_service
 from core.config import settings
 from services.currency import currency_service
@@ -37,8 +39,7 @@ snapshot_service = SnapshotService(lock_manager)
 
 
 async def sync_integration_data_async(integration_id: str, task_instance=None):
-    """
-    Syncs data for a single integration.
+    """Syncs data for a single integration.
 
     Guarantees:
     - Only one sync per integration at a time (DistributedLock)
@@ -50,30 +51,21 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
     session_factory = get_async_sessionmaker()
     try:
-        integration, creds = await _load_integration(
-            session_factory, integration_id
-        )
+        integration, creds = await _load_integration(session_factory, integration_id)
         if integration is None or creds is None:
             return
 
         user_id = integration.user_id
 
-        sync_lock = lock_manager.sync_lock(
-            user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC
-        )
+        sync_lock = lock_manager.sync_lock(user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC)
 
         if not await sync_lock.acquire(timeout_sec=settings.SYNC_WAIT_MAX_SEC):
-            logger.info(
-                f"Sync lock wait expired for user {user_id}. "
-                f"Assuming parallel task completed."
-            )
+            logger.info(f"Sync lock wait expired for user {user_id}. Assuming parallel task completed.")
             _update_progress(task_instance, 100, "DONE", "Synced (via parallel task)")
             return
 
         try:
-            await _run_sync(
-                session_factory, integration, creds, task_instance
-            )
+            await _run_sync(session_factory, integration, creds, task_instance)
         finally:
             await sync_lock.release()
 
@@ -84,16 +76,13 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
 
 async def _load_integration(session_factory, integration_id: str):
-    """
-    Loads the integration from the DB and decrypts credentials.
+    """Loads the integration from the DB and decrypts credentials.
 
     Returns:
         (Integration, dict) or (None, None) on error.
     """
     async with session_factory() as db:
-        result = await db.execute(
-            select(Integration).where(Integration.id == UUID(integration_id))
-        )
+        result = await db.execute(select(Integration).where(Integration.id == UUID(integration_id)))
         integration = result.scalar_one_or_none()
 
         if not integration:
@@ -101,11 +90,11 @@ async def _load_integration(session_factory, integration_id: str):
             return None, None
 
         if integration.provider_id not in [
-            ProviderID.binance, ProviderID.trading212, ProviderID.freedom24
+            ProviderID.binance,
+            ProviderID.trading212,
+            ProviderID.freedom24,
         ]:
-            logger.warning(
-                f"Provider {integration.provider_id} not supported for sync yet"
-            )
+            logger.warning(f"Provider {integration.provider_id} not supported for sync yet")
             return None, None
 
         try:
@@ -119,17 +108,19 @@ async def _load_integration(session_factory, integration_id: str):
 
 
 async def _run_sync(session_factory, integration, creds, task_instance):
-    """
-    Executes the main sync logic:
-    1. Fetch data via Adapter
-    2. Atomic DELETE + INSERT in a single transaction
-    3. Snapshot creation after commit
+    """Executes the main sync logic.
+
+    Steps:
+    1. Fetch data via Adapter.
+    2. Atomic DELETE + INSERT in a single transaction.
+    3. Snapshot creation after commit.
     """
     user_id = integration.user_id
 
     _update_progress(task_instance, 20, "FETCHING", "Fetching data from exchange...")
 
     from adapters.factory import AdapterFactory
+
     try:
         adapter = AdapterFactory.get_adapter(integration.provider_id)
         assets_data = await adapter.fetch_balances(creds, integration.settings)
@@ -138,9 +129,7 @@ async def _run_sync(session_factory, integration, creds, task_instance):
         _update_progress(task_instance, 0, "ERROR", str(e))
         raise
 
-    _update_progress(
-        task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets..."
-    )
+    _update_progress(task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets...")
 
     new_assets = []
     total_portfolio_value = 0.0
@@ -154,7 +143,11 @@ async def _run_sync(session_factory, integration, creds, task_instance):
             total_portfolio_value += usd_value
 
             await PriceTrackingService.record_price(
-                price_db, ad.symbol, integration.provider_id, price_usd, settings.BASE_CURRENCY
+                price_db,
+                ad.symbol,
+                integration.provider_id,
+                price_usd,
+                settings.BASE_CURRENCY,
             )
             calculated_change = await PriceTrackingService.calculate_24h_change(
                 price_db, ad.symbol, integration.provider_id, price_usd
@@ -180,33 +173,23 @@ async def _run_sync(session_factory, integration, creds, task_instance):
 
     async with session_factory() as db:
         async with db.begin():
-            await db.execute(
-                delete(UnifiedAsset).where(
-                    UnifiedAsset.integration_id == integration.id
-                )
-            )
+            await db.execute(delete(UnifiedAsset).where(UnifiedAsset.integration_id == integration.id))
             if new_assets:
                 db.add_all(new_assets)
             # auto-commit on exit from begin()
 
     logger.info(
-        f"Committed {len(new_assets)} assets for integration "
-        f"{integration.id}. Total: ${total_portfolio_value:,.2f}"
+        f"Committed {len(new_assets)} assets for integration {integration.id}. Total: ${total_portfolio_value:,.2f}"
     )
 
     _update_progress(task_instance, 92, "SNAPSHOT", "Creating portfolio snapshot...")
 
     async with session_factory() as snapshot_db:
-        await snapshot_service.create_or_update_snapshot(
-            snapshot_db, user_id, len(new_assets)
-        )
+        await snapshot_service.create_or_update_snapshot(snapshot_db, user_id, len(new_assets))
 
     redis_client.set(f"sync_last_time:{user_id}", str(time.time()))
     _update_progress(task_instance, 100, "DONE", "Sync complete")
-    logger.info(
-        f"Successfully synced {len(new_assets)} assets. "
-        f"Total Value: ${total_portfolio_value:,.2f}"
-    )
+    logger.info(f"Successfully synced {len(new_assets)} assets. Total Value: ${total_portfolio_value:,.2f}")
 
 
 def _update_progress(task_instance, current: int, stage: str, message: str):
@@ -236,8 +219,8 @@ def sync_integration_data(self, integration_id: str):
 
 @celery_app.task(name="trigger_global_sync")
 def trigger_global_sync():
-    """
-    Scheduled task to trigger sync for ALL active integrations.
+    """Scheduled task to trigger sync for ALL active integrations.
+
     Dispatches individual sync tasks for each integration.
     """
     logger.info("⏰ Global Sync: Starting scheduled update for all users...")
@@ -273,11 +256,7 @@ def cleanup_price_history():
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
                 hours=settings.PRICE_HISTORY_KEEP_HOURS
             )
-            result = await conn.execute(
-                sa_delete(MarketPriceHistory).where(
-                    MarketPriceHistory.timestamp < cutoff
-                )
-            )
+            result = await conn.execute(sa_delete(MarketPriceHistory).where(MarketPriceHistory.timestamp < cutoff))
             logger.info(f"Deleted {result.rowcount} old price history records.")
 
         await dispose_loop_engine()

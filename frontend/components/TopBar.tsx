@@ -5,9 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     LayoutDashboard,
     Activity,
-    DollarSign,
     Plug,
-    Users,
     Settings,
     LogOut,
     Menu,
@@ -25,7 +23,7 @@ interface TopBarProps {
     onLogout: () => void;
 }
 
-export function TopBar({ userEmail, onLogout }: TopBarProps) {
+export function TopBar({ onLogout }: TopBarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

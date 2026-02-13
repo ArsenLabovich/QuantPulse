@@ -1,9 +1,10 @@
+"""Main entry point for the QuantPulse FastAPI application."""
+
 from fastapi import FastAPI
-from routers import auth, users, integrations, dashboard
+from fastapi.middleware.cors import CORSMiddleware
+from routers import auth, dashboard, integrations, users
 
 app = FastAPI(title="QuantPulse API")
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +18,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 app.include_router(dashboard.router)
+
 
 @app.get("/")
 async def root():

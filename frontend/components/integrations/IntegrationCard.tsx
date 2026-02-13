@@ -1,7 +1,8 @@
 "use client";
 
-import { Trash2, CheckCircle, AlertCircle, Activity } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import { CustomTooltip } from "../ui/CustomTooltip";
 
 interface IntegrationCardProps {
@@ -12,7 +13,7 @@ interface IntegrationCardProps {
     onDelete: (id: string) => void;
 }
 
-export function IntegrationCard({ id, name, provider, isActive, onDelete }: IntegrationCardProps) {
+export function IntegrationCard({ id, name, provider, onDelete }: IntegrationCardProps) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -23,10 +24,13 @@ export function IntegrationCard({ id, name, provider, isActive, onDelete }: Inte
                 {/* Provider Icon */}
                 <div className={`w-20 h-20 rounded-2xl flex items-center justify-center shadow-sm shrink-0 overflow-hidden ${provider === 'freedom24' ? 'bg-[#2A2E39] p-3' : ''
                     }`} title={provider}>
-                    <img
+                    <Image
                         src={`/icons/square_icon/${provider}.svg`}
                         alt={name}
+                        width={80}
+                        height={80}
                         className="w-full h-full object-contain rounded-2xl"
+                        unoptimized
                     />
                 </div>
 

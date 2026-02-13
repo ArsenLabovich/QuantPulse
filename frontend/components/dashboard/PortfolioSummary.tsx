@@ -1,7 +1,8 @@
 "use client";
 
-import { motion, useSpring, useTransform, useMotionValue, animate } from "framer-motion";
+import { motion, useSpring, useTransform, useMotionValue } from "framer-motion";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { TrendingUp, TrendingDown, Layers, Wallet, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { DetailedHoldingItem } from "@/types/dashboard";
 
@@ -46,25 +47,25 @@ type AssetIconProps = {
 };
 
 const AssetIcon = ({ url, symbol, className }: AssetIconProps) => {
-    const [imgSrc, setImgSrc] = useState(url || "/icons/generic_asset.png");
+    const [hasError, setHasError] = useState(false);
+    const [prevUrl, setPrevUrl] = useState(url);
 
-    useEffect(() => {
-        setImgSrc(url || "/icons/generic_asset.png");
-    }, [url]);
+    if (url !== prevUrl) {
+        setHasError(false);
+        setPrevUrl(url);
+    }
 
-    // Handle image error by falling back to generic asset icon
-    const handleError = () => {
-        if (imgSrc !== "/icons/generic_asset.png") {
-            setImgSrc("/icons/generic_asset.png");
-        }
-    };
+    const imgSrc = (hasError || !url) ? "/icons/generic_asset.png" : url;
 
     return (
-        <img
+        <Image
             src={imgSrc}
             className={className}
             alt={symbol}
-            onError={handleError}
+            width={32}
+            height={32}
+            unoptimized
+            onError={() => setHasError(true)}
         />
     );
 };
@@ -139,7 +140,7 @@ export function PortfolioSummary({ filteredData, totalPortfolioValue, totalAsset
                         {(() => {
                             const isNeutral = Math.abs(totalWeightedChange) < 0.005;
                             const isPositive = totalWeightedChange >= 0;
-                            
+
                             let colorClass = "";
                             let Icon = null;
                             let sign = "";

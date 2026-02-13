@@ -5,7 +5,7 @@ if (typeof window !== "undefined") {
     const defaultError = console.error;
     const defaultWarn = console.warn;
 
-    console.error = (...args: any[]) => {
+    console.error = (...args: unknown[]) => {
         const msg = args.map(arg => String(arg)).join(' ');
         if (
             msg.includes("bis_skin_checked") ||
@@ -18,15 +18,17 @@ if (typeof window !== "undefined") {
         ) {
             return;
         }
-        defaultError.apply(console, args);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        defaultError.apply(console, args as any[]);
     };
 
-    console.warn = (...args: any[]) => {
+    console.warn = (...args: unknown[]) => {
         const msg = args.map(arg => String(arg)).join(' ');
         if (msg.includes("bis_skin_checked") || msg.includes("hydration")) {
             return;
         }
-        defaultWarn.apply(console, args);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        defaultWarn.apply(console, args as any[]);
     };
 }
 

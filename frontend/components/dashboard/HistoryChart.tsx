@@ -1,7 +1,6 @@
 "use client";
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { motion } from "framer-motion";
 import { useMemo, useState, useEffect } from "react";
 import { HistoryItem } from "@/types/dashboard";
 import api from '@/lib/api';
@@ -167,6 +166,7 @@ export function HistoryChart({
                             animationDuration={100}
                             contentStyle={{ backgroundColor: '#1E222D', border: '1px solid #2A2E39', borderRadius: '8px' }}
                             itemStyle={{ color: '#3978FF' }}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Value']}
                             labelStyle={{ color: '#909399', marginBottom: '4px' }}
                             labelFormatter={(str) => {

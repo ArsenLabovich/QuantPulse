@@ -28,3 +28,15 @@ tradernet-sdk = "^1.0.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Enable Pyflakes (F), pycodestyle (E), and pydocstyle (D)
+select = ["E", "F", "D"]
+# Focus on module-level docs, ignore missing docs for individual methods/classes for now
+ignore = ["D101", "D102", "D103", "D105", "D106", "D107", "D200", "D415"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

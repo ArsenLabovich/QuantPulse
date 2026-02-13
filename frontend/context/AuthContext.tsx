@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 
@@ -31,6 +31,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [loading, setLoading] = useState(true);
     const router = useRouter();
     const pathname = usePathname();
+
+    const logout = useCallback(() => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        setUser(null);
+        router.push("/login");
+    }, [router]);
 
     useEffect(() => {
         const initAuth = async () => {
@@ -74,7 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (typeof window !== 'undefined') {
             initAuth();
         }
-    }, [pathname]);
+    }, [pathname, router, logout]);
 
     const login = (token: string, refreshToken: string) => {
         localStorage.setItem("token", token);
@@ -84,13 +91,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // For speed, let's assume valid if we just got it.
         // But better to fetch or decode. For now, let's trigger a reload or push.
         router.push("/dashboard");
-    };
-
-    const logout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("refreshToken");
-        setUser(null);
-        router.push("/login");
     };
 
     return (

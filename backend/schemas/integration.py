@@ -1,3 +1,5 @@
+"""Pydantic schemas for brokerage and exchange integrations."""
+
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from models.integration import ProviderID
@@ -26,13 +28,14 @@ class Integration(IntegrationBase):
     user_id: int
     is_active: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class IntegrationResponse(BaseModel):
     """Response model that excludes credentials for security."""
+
     id: UUID
     user_id: int
     provider_id: ProviderID
@@ -40,12 +43,13 @@ class IntegrationResponse(BaseModel):
     is_active: bool
     settings: Optional[Dict[str, Any]] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class BinanceCredentials(BaseModel):
     """Schema for Binance API credentials."""
+
     api_key: str
     api_secret: str

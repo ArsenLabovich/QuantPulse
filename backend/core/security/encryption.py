@@ -1,6 +1,8 @@
+"""Encryption service for protecting sensitive credentials."""
+
 from cryptography.fernet import Fernet
 from core.config import settings
-import base64
+
 
 class EncryptionService:
     def __init__(self):
@@ -20,5 +22,6 @@ class EncryptionService:
         if not token:
             return ""
         return self.fernet.decrypt(token.encode()).decode()
+
 
 encryption_service = EncryptionService()

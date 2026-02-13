@@ -1,7 +1,8 @@
 "use client";
 
 import { HoldingItem, Movers, AllocationItem } from "@/types/dashboard";
-import { TrendingUp, TrendingDown, DollarSign, Award, Wallet } from "lucide-react";
+import { TrendingUp, TrendingDown, Award, Wallet } from "lucide-react";
+import Image from "next/image";
 
 interface StatsGridProps {
     movers: Movers;
@@ -83,12 +84,11 @@ export function StatsGrid({ movers, allocation, holdings, cashValue, isLoading }
 
                 // Prepare display values
                 let name = "N/A";
-                let symbol = "";
+                const symbol = "";
                 let price = "";
                 let changeStr = "";
                 let changeColor = "text-gray-500";
-                let changeBgColor = "bg-gray-500/10"; // Default
-                let iconUrl = asset?.icon_url;
+                const iconUrl = asset?.icon_url;
 
                 if (stat.type === "cash") {
                     name = "Liquid Cash";
@@ -126,10 +126,8 @@ export function StatsGrid({ movers, allocation, holdings, cashValue, isLoading }
 
                         if (isZero) {
                             changeColor = "text-gray-400"; // Gray for 0.00%
-                            changeBgColor = "bg-gray-500/10";
                         } else {
                             changeColor = change >= 0 ? "text-[#00C805]" : "text-[#FF3B30]";
-                            changeBgColor = change >= 0 ? "bg-[#00C805]/10" : "bg-[#FF3B30]/10";
                         }
                     }
                 }
@@ -140,13 +138,16 @@ export function StatsGrid({ movers, allocation, holdings, cashValue, isLoading }
                         <div className="flex items-center space-x-4">
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${stat.bgColor} ${stat.color} relative overflow-hidden`}>
                                 {iconUrl ? (
-                                    <img
+                                    <Image
                                         src={iconUrl}
                                         alt={symbol}
+                                        width={48}
+                                        height={48}
                                         className="w-full h-full object-cover"
+                                        unoptimized
                                         onError={(e) => {
-                                            e.currentTarget.src = "/icons/generic_asset.png";
-                                            e.currentTarget.onerror = null;
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = "/icons/generic_asset.png";
                                         }}
                                     />
                                 ) : (

@@ -7,7 +7,6 @@ import { PortfolioSummary } from "@/components/dashboard/PortfolioSummary";
 import { AssetDetailsDrawer } from "@/components/dashboard/AssetDetailsDrawer";
 import { useRefresh } from "@/context/RefreshContext";
 import { DetailedHoldingItem } from "@/types/dashboard";
-import { motion, AnimatePresence } from "framer-motion";
 
 // Helper: Aggregation Logic (Lifted State)
 function aggregateBySymbol(items: DetailedHoldingItem[]): DetailedHoldingItem[] {
