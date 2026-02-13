@@ -4,6 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { RefreshProvider } from "@/context/RefreshContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export default function DashboardLayout({
     children,
@@ -28,10 +29,14 @@ export default function DashboardLayout({
                 <TopBar userEmail={user.email} onLogout={logout} />
                 <main className={`flex-1 min-h-0 relative w-full ${isPortfolio ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                     {isPortfolio ? (
-                        children
+                        <ErrorBoundary>
+                            {children}
+                        </ErrorBoundary>
                     ) : (
                         <div className="p-6">
-                            {children}
+                            <ErrorBoundary>
+                                {children}
+                            </ErrorBoundary>
                         </div>
                     )}
                 </main>

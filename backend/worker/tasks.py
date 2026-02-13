@@ -21,7 +21,8 @@ from core.database import get_async_sessionmaker, get_async_engine, dispose_loop
 from redis import Redis
 import time
 
-from models.assets import UnifiedAsset
+from models.user import User  # noqa: F401
+from models.assets import UnifiedAsset, PortfolioSnapshot, PortfolioAggregate  # noqa: F401
 from models.integration import Integration, ProviderID
 from core.security.encryption import encryption_service
 from core.config import settings
@@ -57,10 +58,14 @@ async def sync_integration_data_async(integration_id: str, task_instance=None):
 
         user_id = integration.user_id
 
-        sync_lock = lock_manager.sync_lock(user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC)
+        sync_lock = lock_manager.sync_lock(
+            user_id, integration_id, ttl_sec=settings.SYNC_LOCK_TTL_SEC
+        )
 
         if not await sync_lock.acquire(timeout_sec=settings.SYNC_WAIT_MAX_SEC):
-            logger.info(f"Sync lock wait expired for user {user_id}. Assuming parallel task completed.")
+            logger.info(
+                f"Sync lock wait expired for user {user_id}. Assuming parallel task completed."
+            )
             _update_progress(task_instance, 100, "DONE", "Synced (via parallel task)")
             return
 
@@ -82,7 +87,9 @@ async def _load_integration(session_factory, integration_id: str):
         (Integration, dict) or (None, None) on error.
     """
     async with session_factory() as db:
-        result = await db.execute(select(Integration).where(Integration.id == UUID(integration_id)))
+        result = await db.execute(
+            select(Integration).where(Integration.id == UUID(integration_id))
+        )
         integration = result.scalar_one_or_none()
 
         if not integration:
@@ -94,7 +101,9 @@ async def _load_integration(session_factory, integration_id: str):
             ProviderID.trading212,
             ProviderID.freedom24,
         ]:
-            logger.warning(f"Provider {integration.provider_id} not supported for sync yet")
+            logger.warning(
+                f"Provider {integration.provider_id} not supported for sync yet"
+            )
             return None, None
 
         try:
@@ -129,7 +138,9 @@ async def _run_sync(session_factory, integration, creds, task_instance):
         _update_progress(task_instance, 0, "ERROR", str(e))
         raise
 
-    _update_progress(task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets...")
+    _update_progress(
+        task_instance, 60, "PROCESSING", f"Processing {len(assets_data)} assets..."
+    )
 
     new_assets = []
     total_portfolio_value = 0.0
@@ -173,7 +184,11 @@ async def _run_sync(session_factory, integration, creds, task_instance):
 
     async with session_factory() as db:
         async with db.begin():
-            await db.execute(delete(UnifiedAsset).where(UnifiedAsset.integration_id == integration.id))
+            await db.execute(
+                delete(UnifiedAsset).where(
+                    UnifiedAsset.integration_id == integration.id
+                )
+            )
             if new_assets:
                 db.add_all(new_assets)
             # auto-commit on exit from begin()
@@ -185,11 +200,15 @@ async def _run_sync(session_factory, integration, creds, task_instance):
     _update_progress(task_instance, 92, "SNAPSHOT", "Creating portfolio snapshot...")
 
     async with session_factory() as snapshot_db:
-        await snapshot_service.create_or_update_snapshot(snapshot_db, user_id, len(new_assets))
+        await snapshot_service.create_or_update_snapshot(
+            snapshot_db, user_id, len(new_assets)
+        )
 
     redis_client.set(f"sync_last_time:{user_id}", str(time.time()))
     _update_progress(task_instance, 100, "DONE", "Sync complete")
-    logger.info(f"Successfully synced {len(new_assets)} assets. Total Value: ${total_portfolio_value:,.2f}")
+    logger.info(
+        f"Successfully synced {len(new_assets)} assets. Total Value: ${total_portfolio_value:,.2f}"
+    )
 
 
 def _update_progress(task_instance, current: int, stage: str, message: str):
@@ -256,7 +275,11 @@ def cleanup_price_history():
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
                 hours=settings.PRICE_HISTORY_KEEP_HOURS
             )
-            result = await conn.execute(sa_delete(MarketPriceHistory).where(MarketPriceHistory.timestamp < cutoff))
+            result = await conn.execute(
+                sa_delete(MarketPriceHistory).where(
+                    MarketPriceHistory.timestamp < cutoff
+                )
+            )
             logger.info(f"Deleted {result.rowcount} old price history records.")
 
         await dispose_loop_engine()

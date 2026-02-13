@@ -11,7 +11,9 @@ class Trading212Client:
     LIVE_URL = "https://live.trading212.com/api/v0"
     DEMO_URL = "https://demo.trading212.com/api/v0"
 
-    def __init__(self, api_key: str, api_secret: Optional[str] = None, is_demo: bool = False):
+    def __init__(
+        self, api_key: str, api_secret: Optional[str] = None, is_demo: bool = False
+    ):
         self.api_key = api_key
         self.api_secret = api_secret or ""
         self.base_url = self.DEMO_URL if is_demo else self.LIVE_URL
@@ -23,18 +25,83 @@ class Trading212Client:
         self._headers = {"Content-Type": "application/json"}
 
     async def _request(self, method: str, endpoint: str) -> Dict[str, Any]:
-        url = f"{self.base_url}{endpoint}"
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.request(method, url, auth=self._auth, headers=self._headers, timeout=10.0)
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Trading 212 API Error [{self.base_url}]: {e.response.status_code} - {e.response.text}")
-                raise
-            except Exception as e:
-                logger.error(f"Trading 212 Request Failed: {e}")
-                raise
+        from tenacity import (
+            retry,
+            stop_after_attempt,
+            wait_exponential,
+            retry_if_exception_type,
+        )
+        import time
+
+        def wait_trading212_ratelimit(retry_state):
+            """Custom wait strategy for Trading212 429 errors."""
+            last_exception = retry_state.outcome.exception()
+            if (
+                isinstance(last_exception, httpx.HTTPStatusError)
+                and last_exception.response.status_code == 429
+            ):
+                # 1. Try standard Retry-After
+                retry_after = last_exception.response.headers.get("Retry-After")
+                if retry_after:
+                    logger.warning(
+                        f"Trading212 Rate Limit: Standard Retry-After {retry_after}s"
+                    )
+                    return float(retry_after)
+
+                # 2. Try x-ratelimit-reset (Unix Timestamp)
+                reset_time = last_exception.response.headers.get("x-ratelimit-reset")
+                if reset_time:
+                    try:
+                        wait_seconds = float(reset_time) - time.time()
+                        wait_seconds = max(wait_seconds, 1.0)  # Ensure at least 1s
+                        logger.warning(
+                            f"Trading212 Rate Limit: x-ratelimit-reset. Waiting {wait_seconds:.2f}s"
+                        )
+                        return wait_seconds
+                    except ValueError:
+                        pass
+
+            # Fallback: Exponential backoff (1s, 2s, 4s...)
+            return wait_exponential(multiplier=1, min=1, max=10)(retry_state)
+
+        @retry(
+            retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
+            stop=stop_after_attempt(5),  # Increased to 5 attempts
+            wait=wait_trading212_ratelimit,
+            reraise=True,
+        )
+        async def _make_request():
+            url = f"{self.base_url}{endpoint}"
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.request(
+                        method,
+                        url,
+                        auth=self._auth,
+                        headers=self._headers,
+                        timeout=15.0,  # Slightly longer timeout
+                    )
+
+                    if response.status_code == 429:
+                        # Log 429 as warning and raise to trigger retry
+                        logger.warning(
+                            f"Trading 212 Rate Limit Hit [{url}]: {response.text}"
+                        )
+                        response.raise_for_status()
+
+                    response.raise_for_status()
+                    return response.json()
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code != 429:
+                        logger.error(
+                            f"Trading 212 API Error [{url}]: {e.response.status_code} - {e.response.text}"
+                        )
+                    raise
+                except Exception as e:
+                    logger.error(f"Trading 212 Request Failed [{url}]: {e}")
+                    raise
+
+        return await _make_request()
 
     async def validate_keys(self) -> Dict[str, bool]:
         """Validates keys by trying Live then Demo.
