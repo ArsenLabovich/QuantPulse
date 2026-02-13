@@ -18,6 +18,8 @@ import logging
 from adapters.base import BaseAdapter, AssetData
 from services.icons import IconResolver
 from models.assets import AssetType
+from core.utils.retries import exchange_retry
+from services.deduplication import BinanceDetailsDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ class BinanceAdapter(BaseAdapter):
     def get_provider_id(self) -> str:
         return "binance"
 
-    # ... (validate_credentials remains same)
+    @exchange_retry()
     async def validate_credentials(
         self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None
     ) -> bool:
@@ -50,7 +52,9 @@ class BinanceAdapter(BaseAdapter):
         api_secret = credentials.get("api_secret")
 
         try:
-            exchange = ccxt.binance({"apiKey": api_key, "secret": api_secret, "enableRateLimit": True})
+            exchange = ccxt.binance(
+                {"apiKey": api_key, "secret": api_secret, "enableRateLimit": True}
+            )
             # ccxt.binance uses blocking calls by default; we wrap them in an executor
             # to keep the event loop responsive.
             loop = asyncio.get_event_loop()
@@ -60,6 +64,7 @@ class BinanceAdapter(BaseAdapter):
             logger.error(f"Binance validation failed: {e}")
             return False
 
+    @exchange_retry()
     async def fetch_balances(
         self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None
     ) -> List[AssetData]:
@@ -70,7 +75,9 @@ class BinanceAdapter(BaseAdapter):
         api_key = credentials.get("api_key")
         api_secret = credentials.get("api_secret")
 
-        exchange = ccxt.binance({"apiKey": api_key, "secret": api_secret, "enableRateLimit": True})
+        exchange = ccxt.binance(
+            {"apiKey": api_key, "secret": api_secret, "enableRateLimit": True}
+        )
 
         wallet_types = ["spot", "future", "delivery", "funding"]
         loop = asyncio.get_event_loop()
@@ -85,13 +92,17 @@ class BinanceAdapter(BaseAdapter):
                 return
             if symbol not in detailed_balances:
                 detailed_balances[symbol] = {}
-            detailed_balances[symbol][source] = detailed_balances[symbol].get(source, 0.0) + amount
+            detailed_balances[symbol][source] = (
+                detailed_balances[symbol].get(source, 0.0) + amount
+            )
 
         # Phase 1: Standard Wallets (Spot, Future, Delivery, Funding)
         for w_type in wallet_types:
             try:
                 params = {"type": w_type} if w_type != "spot" else {}
-                balance_data = await loop.run_in_executor(None, lambda: exchange.fetch_balance(params))
+                balance_data = await loop.run_in_executor(
+                    None, lambda: exchange.fetch_balance(params)
+                )
                 total_data = balance_data.get("total", {})
                 for symbol, amount in total_data.items():
                     # 'LD' prefix handles assets visible in Spot view that actually belong to Flexible Earn
@@ -135,7 +146,9 @@ class BinanceAdapter(BaseAdapter):
             try:
                 staking_pos = await loop.run_in_executor(
                     None,
-                    lambda: exchange.sapi_get_staking_position({"product": p_type, "size": 100}),
+                    lambda: exchange.sapi_get_staking_position(
+                        {"product": p_type, "size": 100}
+                    ),
                 )
                 for row in staking_pos:
                     symbol = row["asset"]
@@ -148,7 +161,9 @@ class BinanceAdapter(BaseAdapter):
 
         # 5. BNB Vault & Margin
         try:
-            vault = await loop.run_in_executor(None, exchange.sapi_get_bnb_vault_account)
+            vault = await loop.run_in_executor(
+                None, exchange.sapi_get_bnb_vault_account
+            )
             amount = float(vault.get("totalAmount") or 0)
             add_balance("BNB", "BNB-Vault", amount)
         except Exception as e:
@@ -167,66 +182,30 @@ class BinanceAdapter(BaseAdapter):
 
         # 6. Direct Funding Assets
         try:
-            funding = await loop.run_in_executor(None, exchange.sapi_post_asset_get_funding_asset)
+            funding = await loop.run_in_executor(
+                None, exchange.sapi_post_asset_get_funding_asset
+            )
             for item in funding:
                 asset = item["asset"]
-                amount = float(item["free"]) + float(item["freeze"]) + float(item["withdrawing"])
+                amount = (
+                    float(item["free"])
+                    + float(item["freeze"])
+                    + float(item["withdrawing"])
+                )
                 add_balance(asset, "Funding-Direct", amount)
         except Exception as e:
             logger.warning(f"Could not fetch Funding assets: {e}")
             skipped_sources.append("Funding-Direct")
 
         # Phase 6: Deduplication logic
-        # Binance often reports the same value in different ways (e.g., Simple Earn assets
-        # showing up as 'LD-prefixed' in Spot and also in dedicated Simple Earn reports).
-        # We group sources into 'buckets' and take the maximum value from each bucket
-        # to ensure we don't double-count.
-        final_balances = {}
-        for symbol, sources in detailed_balances.items():
-            logger.info(f"Binance Detail for {symbol}: {sources}")
-
-            # Bucket 1: Flexible Positions
-            flex_vals = [v for k, v in sources.items() if "simpleearn-flexible" in k.lower() or "-ld" in k.lower()]
-            flex_total = max(flex_vals) if flex_vals else 0.0
-
-            # Bucket 2: Locked Positions, Staking, and Vault
-            locked_vals = [
-                v
-                for k, v in sources.items()
-                if any(x in k.lower() for x in ["simpleearn-locked", "staking-", "bnb-vault"])
-            ]
-            locked_total = max(locked_vals) if locked_vals else 0.0
-
-            # Bucket 3: Funding Wallet
-            funding_vals = [v for k, v in sources.items() if any(x in k.lower() for x in ["funding-", "funding_asset"])]
-            funding_total = max(funding_vals) if funding_vals else 0.0
-
-            # Bucket 4: Pure Liquid Balances (Additive)
-            liquid_total = 0.0
-            for k, v in sources.items():
-                k_lower = k.lower()
-                if any(
-                    x in k_lower
-                    for x in [
-                        "simpleearn-",
-                        "staking-",
-                        "funding-",
-                        "-ld",
-                        "bnb-vault",
-                        "funding_asset",
-                    ]
-                ):
-                    continue
-                liquid_total += v
-
-            total = flex_total + locked_total + funding_total + liquid_total
-
-            if total > 1e-8:
-                final_balances[symbol] = total
+        # Using the dedicated service to consolidate balances from multiple sources
+        final_balances = BinanceDetailsDeduplicator.deduplicate(detailed_balances)
 
         logger.info(f"Binance FINAL combined balances: {final_balances}")
         if skipped_sources:
-            logger.warning(f"Binance sync completed with {len(skipped_sources)} skipped sources: {skipped_sources}")
+            logger.warning(
+                f"Binance sync completed with {len(skipped_sources)} skipped sources: {skipped_sources}"
+            )
 
         # Fetch Tickers
         tickers = await loop.run_in_executor(None, exchange.fetch_tickers)
@@ -266,7 +245,9 @@ class BinanceAdapter(BaseAdapter):
                     name=symbol,
                     asset_type=AssetType.CRYPTO,
                     change_24h=change_24h,
-                    image_url=IconResolver.get_icon_url(symbol, AssetType.CRYPTO, self.get_provider_id()),
+                    image_url=IconResolver.get_icon_url(
+                        symbol, AssetType.CRYPTO, self.get_provider_id()
+                    ),
                 )
             )
         return assets

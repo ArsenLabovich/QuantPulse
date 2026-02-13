@@ -25,6 +25,7 @@ httpx = "^0.28.1"
 yfinance = "^0.2.36"
 tradernet-sdk = "^1.0.0"
 fastapi-limiter = "^0.1.6"
+tenacity = "^9.0.0"
 
 [build-system]
 requires = ["poetry-core"]
