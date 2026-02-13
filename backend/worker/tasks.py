@@ -16,9 +16,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from uuid import UUID
 from sqlalchemy import select, delete
 
+
 from worker.celery_app import celery_app
 from core.database import get_async_sessionmaker, get_async_engine, dispose_loop_engine
-from redis import Redis
+from core.redis import get_redis_client
 import time
 
 from models.user import User  # noqa: F401
@@ -34,7 +35,8 @@ from services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
-redis_client = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+# Use async Redis client for consistent locking
+redis_client = get_redis_client()
 lock_manager = LockManager(redis_client)
 snapshot_service = SnapshotService(lock_manager)
 

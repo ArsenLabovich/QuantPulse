@@ -10,13 +10,19 @@ logger = logging.getLogger(__name__)
 class Trading212Client:
     LIVE_URL = "https://live.trading212.com/api/v0"
     DEMO_URL = "https://demo.trading212.com/api/v0"
+    CACHE_TTL_SEC = 86400  # 24 hours
 
     def __init__(
-        self, api_key: str, api_secret: Optional[str] = None, is_demo: bool = False
+        self,
+        api_key: str,
+        api_secret: Optional[str] = None,
+        is_demo: bool = False,
+        redis_client: Optional[Any] = None,
     ):
         self.api_key = api_key
         self.api_secret = api_secret or ""
         self.base_url = self.DEMO_URL if is_demo else self.LIVE_URL
+        self.redis = redis_client
 
         # Use Basic Auth: username=api_key, password=api_secret (or empty)
         # Verify: If user only has one key, maybe it goes in username?
@@ -150,7 +156,30 @@ class Trading212Client:
 
         Ref: https://t212public-api-docs.redoc.ly/#operation/getInstruments.
         """
-        return await self._request("GET", "/equity/metadata/instruments")
+        if not self.redis:
+            return await self._request("GET", "/equity/metadata/instruments")
+
+        import json
+        import hashlib
+
+        # 1. Generate cache key based on API Key hash (to isolate users)
+        key_hash = hashlib.md5(self.api_key.encode()).hexdigest()
+        cache_key = f"t212:instruments:{key_hash}"
+
+        # 2. Try Cache
+        cached_data = await self.redis.get(cache_key)
+        if cached_data:
+            logger.info("Returning cached Trading212 instruments")
+            return json.loads(cached_data)
+
+        # 3. Fetch from API
+        logger.info("Fetching Trading212 instruments from API")
+        data = await self._request("GET", "/equity/metadata/instruments")
+
+        # 4. Save to Cache
+        await self.redis.set(cache_key, json.dumps(data), ex=self.CACHE_TTL_SEC)
+
+        return data
 
     async def get_open_positions(self) -> List[Dict[str, Any]]:
         """Fetches all open positions.

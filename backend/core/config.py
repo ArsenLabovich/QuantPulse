@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
 
     # --- Sync & Snapshot Settings ---
-    SYNC_LOCK_TTL_SEC: int = 50  # TTL for integration sync lock
+    SYNC_LOCK_TTL_SEC: int = 30  # TTL for integration sync lock
     SYNC_WAIT_MAX_SEC: int = 20  # Max wait time if sync is already in progress
     SNAPSHOT_LOCK_TTL_SEC: int = 30  # TTL for snapshot lock
     SNAPSHOT_LOCK_TIMEOUT_SEC: float = 25.0  # Timeout for waiting for snapshot lock

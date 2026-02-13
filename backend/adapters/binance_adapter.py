@@ -97,31 +97,33 @@ class BinanceAdapter(BaseAdapter):
             )
 
         # Phase 1: Standard Wallets (Spot, Future, Delivery, Funding)
-        for w_type in wallet_types:
+        for wallet_type in wallet_types:
             try:
-                params = {"type": w_type} if w_type != "spot" else {}
+                params = {"type": wallet_type} if wallet_type != "spot" else {}
                 balance_data = await loop.run_in_executor(
                     None, lambda: exchange.fetch_balance(params)
                 )
                 total_data = balance_data.get("total", {})
                 for symbol, amount in total_data.items():
                     # 'LD' prefix handles assets visible in Spot view that actually belong to Flexible Earn
-                    norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                    add_balance(norm_symbol, f"{w_type}-{symbol}", amount)
+                    normalized_symbol = (
+                        symbol[2:] if symbol.startswith("LD") else symbol
+                    )
+                    add_balance(normalized_symbol, f"{wallet_type}-{symbol}", amount)
             except Exception as e:
-                logger.warning(f"Could not fetch Binance {w_type} balance: {e}")
+                logger.warning(f"Could not fetch Binance {wallet_type} balance: {e}")
 
         # 2. Simple Earn (Flexible)
         try:
-            flex_earn = await loop.run_in_executor(
+            flexible_earn_data = await loop.run_in_executor(
                 None,
                 lambda: exchange.sapi_get_simple_earn_flexible_position({"size": 100}),
             )
-            for row in flex_earn.get("rows", []):
+            for row in flexible_earn_data.get("rows", []):
                 symbol = row["asset"]
                 amount = float(row.get("totalAmount") or 0)
-                norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                add_balance(norm_symbol, "SimpleEarn-Flexible", amount)
+                normalized_symbol = symbol[2:] if symbol.startswith("LD") else symbol
+                add_balance(normalized_symbol, "SimpleEarn-Flexible", amount)
         except Exception as e:
             logger.warning(f"Could not fetch Simple Earn Flexible: {e}")
             skipped_sources.append("SimpleEarn-Flexible")
@@ -142,22 +144,24 @@ class BinanceAdapter(BaseAdapter):
             skipped_sources.append("SimpleEarn-Locked")
 
         # 4. Staking / DeFi / Savings (Exhaustive search)
-        for p_type in ["STAKING", "L_DEFI", "F_DEFI"]:
+        for product_type in ["STAKING", "L_DEFI", "F_DEFI"]:
             try:
-                staking_pos = await loop.run_in_executor(
+                staking_positions = await loop.run_in_executor(
                     None,
                     lambda: exchange.sapi_get_staking_position(
-                        {"product": p_type, "size": 100}
+                        {"product": product_type, "size": 100}
                     ),
                 )
-                for row in staking_pos:
+                for row in staking_positions:
                     symbol = row["asset"]
                     amount = float(row.get("amount") or 0)
-                    norm_symbol = symbol[2:] if symbol.startswith("LD") else symbol
-                    add_balance(norm_symbol, f"Staking-{p_type}", amount)
+                    normalized_symbol = (
+                        symbol[2:] if symbol.startswith("LD") else symbol
+                    )
+                    add_balance(normalized_symbol, f"Staking-{product_type}", amount)
             except Exception as e:
-                logger.debug(f"Could not fetch Staking ({p_type}): {e}")
-                skipped_sources.append(f"Staking-{p_type}")
+                logger.debug(f"Could not fetch Staking ({product_type}): {e}")
+                skipped_sources.append(f"Staking-{product_type}")
 
         # 5. BNB Vault & Margin
         try:

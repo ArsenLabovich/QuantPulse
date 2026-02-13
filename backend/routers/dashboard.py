@@ -6,7 +6,7 @@ from sqlalchemy import select, func, desc
 from typing import List, Optional
 import datetime
 import uuid
-from worker.celery_app import celery_app
+import uuid
 
 from core.database import get_db
 from models.user import User
@@ -19,41 +19,38 @@ from pydantic import BaseModel
 # ... existing code ...
 
 
-from celery.result import AsyncResult
-
 # ... existing code ...
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.post("/refresh")
-async def refresh_dashboard(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # 1. Init SyncManager (should ideally be dependency injected, but doing inline for now)
-    # We need a Redis client.
-    from redis import Redis
-    import os
+async def refresh_dashboard(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    # 1. Init SyncManager
+    from core.redis import get_redis_client
 
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    # Quick parse to get host/port? Or just use from_url
-    redis_client = Redis.from_url(redis_url)
+    redis_client = get_redis_client()
 
     from services.sync_manager import SyncManager
 
     sync_manager = SyncManager(redis_client)
 
-    # 2. Check Cooldown (DISABLED FOR TESTING)
-    # remaining = sync_manager.get_remaining_cooldown(current_user.id)
-    # if remaining > 0:
-    #     raise HTTPException(
-    #         status_code=429,
-    #         detail={
-    #             "message": "Sync cooldown active",
-    #             "retry_after": remaining
-    #         }
-    #     )
+    # 2. Check Cooldown
+    if not await sync_manager.can_trigger_sync(current_user.id):
+        remaining = await sync_manager.get_remaining_cooldown(current_user.id)
+        raise HTTPException(
+            status_code=429,
+            detail={"message": "Sync cooldown active", "retry_after": remaining},
+        )
 
     # 3. Find active integrations
-    result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.is_active))
+    result = await db.execute(
+        select(Integration).where(
+            Integration.user_id == current_user.id, Integration.is_active
+        )
+    )
     integrations = result.scalars().all()
 
     if not integrations:
@@ -65,7 +62,7 @@ async def refresh_dashboard(current_user: User = Depends(get_current_user), db: 
         # Pass integration_id to ensure unique task dispatch
         # Note: SyncManager might need update if it enforces single-task per user logic.
         # But assuming trigger_sync just pushes to Celery, it should be fine.
-        tid = sync_manager.trigger_sync(current_user.id, integration.id)
+        tid = await sync_manager.trigger_sync(current_user.id, integration.id)
         task_ids.append(tid)
 
     # Return the first task ID so frontend has something to track.
@@ -79,67 +76,51 @@ async def refresh_dashboard(current_user: User = Depends(get_current_user), db: 
 @router.get("/status/{task_id}")
 async def get_task_status(task_id: str, current_user: User = Depends(get_current_user)):
     # Need SyncManager to clear active task on success
-    from redis import Redis
-    import os
+    from core.redis import get_redis_client
 
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    redis_client = Redis.from_url(redis_url)
+    redis_client = get_redis_client()
+
     from services.sync_manager import SyncManager
 
     sync_manager = SyncManager(redis_client)
 
-    task_result = AsyncResult(task_id, app=celery_app)
+    # get_task_status is synchronous wrapper for Celery AsyncResult, which is fine
+    # (or we could make it async if we upgraded it)
+    status_data = sync_manager.get_task_status(task_id)
 
     try:
-        # Accessing .status or .result might trigger backend lookup which can fail if Redis data is corrupt
-        status = task_result.status
-        if task_result.ready():
-            res = task_result.result
-            if isinstance(res, Exception):
-                result = str(res)
-            else:
-                result = res
+        # If success, clear active task and set last sync time
+        # We handle this logic here or inside SyncManager?
+        # Ideally SyncManager logic, but let's conform to existing pattern first.
+        # status_data = { "task_id": ..., "status": ..., "result": ..., "info": ...}
 
-            # If success, clear active task and set last sync time
-            if status == "SUCCESS":
-                sync_manager.clear_active_task(current_user.id)
-                sync_manager.set_last_sync_time(current_user.id)
-
-        else:
-            result = None
-
-        info = task_result.info
-        info_data = info if isinstance(info, dict) else str(info)
+        status = status_data["status"]
+        if status == "SUCCESS":
+            # These are now async
+            await sync_manager.clear_active_task(current_user.id)
+            await sync_manager.set_last_sync_time(current_user.id)
 
     except Exception as e:
-        # Fallback if Celery fails to read result (e.g. ValueError: Exception info must include...)
-        print(f"Celery Result Read Error: {e}")
-        return {
-            "task_id": task_id,
-            "status": "FAILURE",
-            "result": str(e),
-            "info": {"error": "Failed to read task state"},
-        }
+        print(f"Status update error: {e}")
+        # Non-critical if we fail to clear Redis key, but good to log
 
-    return {"task_id": task_id, "status": status, "result": result, "info": info_data}
+    return status_data
 
 
 @router.get("/sync-status")
 async def get_sync_status(current_user: User = Depends(get_current_user)):
     # Init SyncManager
-    from redis import Redis
-    import os
+    from core.redis import get_redis_client
 
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    redis_client = Redis.from_url(redis_url)
+    redis_client = get_redis_client()
 
     from services.sync_manager import SyncManager
 
     sync_manager = SyncManager(redis_client)
 
-    remaining = sync_manager.get_remaining_cooldown(current_user.id)
-    active_task = sync_manager.get_active_task(current_user.id)
-    last_sync = sync_manager.get_last_sync_time(current_user.id)
+    remaining = await sync_manager.get_remaining_cooldown(current_user.id)
+    active_task = await sync_manager.get_active_task(current_user.id)
+    last_sync = await sync_manager.get_last_sync_time(current_user.id)
 
     return {
         "remaining_cooldown": remaining,
@@ -196,10 +177,16 @@ class DashboardSummary(BaseModel):
 
 
 @router.get("/summary", response_model=DashboardSummary)
-async def get_dashboard_summary(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_dashboard_summary(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     # 1. Calculate Net Worth
     # Sum of all assets for this user
-    result = await db.execute(select(func.sum(UnifiedAsset.usd_value)).where(UnifiedAsset.user_id == current_user.id))
+    result = await db.execute(
+        select(func.sum(UnifiedAsset.usd_value)).where(
+            UnifiedAsset.user_id == current_user.id
+        )
+    )
     total_net_worth = result.scalar() or 0.0
     total_net_worth = float(total_net_worth)
 
@@ -235,7 +222,9 @@ async def get_dashboard_summary(current_user: User = Depends(get_current_user), 
     # 2. Daily Change (Rolling 24h Window)
     # Definition: (Current Value - Oldest Value within last 24h) / Oldest Value
 
-    one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+    one_day_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        hours=24
+    )
 
     # Fetch the OLDEST snapshot that is still within the 24h window
     history_result = await db.execute(
@@ -300,16 +289,26 @@ async def get_dashboard_summary(current_user: User = Depends(get_current_user), 
 
         if i < 5:
             percent = (val / total_net_worth * 100) if total_net_worth > 0 else 0
-            allocation.append(AllocationItem(name=display_name, value=val, percentage=round(percent, 2)))
+            allocation.append(
+                AllocationItem(
+                    name=display_name, value=val, percentage=round(percent, 2)
+                )
+            )
         else:
             other_value += val
 
     if other_value > 0:
         percent = (other_value / total_net_worth * 100) if total_net_worth > 0 else 0
-        allocation.append(AllocationItem(name="Other", value=other_value, percentage=round(percent, 2)))
+        allocation.append(
+            AllocationItem(
+                name="Other", value=other_value, percentage=round(percent, 2)
+            )
+        )
 
     # 4. History (Chart Data) - Default 1d for Summary
-    yesterday = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    yesterday = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        days=1
+    )
     history_query = await db.execute(
         select(PortfolioSnapshot)
         .where(
@@ -343,7 +342,9 @@ async def get_dashboard_summary(current_user: User = Depends(get_current_user), 
     # The allocation query used aggregate. We want detailed list.
 
     raw_assets_result = await db.execute(
-        select(UnifiedAsset).where(UnifiedAsset.user_id == current_user.id).order_by(desc(UnifiedAsset.usd_value))
+        select(UnifiedAsset)
+        .where(UnifiedAsset.user_id == current_user.id)
+        .order_by(desc(UnifiedAsset.usd_value))
     )
     raw_assets = raw_assets_result.scalars().all()
 
@@ -408,7 +409,11 @@ async def get_dashboard_summary(current_user: User = Depends(get_current_user), 
             )  # Type is tricky here if mixed, but IconResolver handles it
 
         # Calculate USD price based on value_usd / balance
-        price_usd = total_val / data["balance"] if abs(data["balance"]) > 1e-12 else data["price"]
+        price_usd = (
+            total_val / data["balance"]
+            if abs(data["balance"]) > 1e-12
+            else data["price"]
+        )
 
         holdings.append(
             HoldingItem(
@@ -439,13 +444,18 @@ async def get_dashboard_summary(current_user: User = Depends(get_current_user), 
     # Let's assume we added it (I will do it in this edit).
 
     significant_holdings = [
-        h for h in holdings if abs(h.value_usd) > 1.0 and holdings_map[h.symbol].get("asset_type") != AssetType.FIAT
+        h
+        for h in holdings
+        if abs(h.value_usd) > 1.0
+        and holdings_map[h.symbol].get("asset_type") != AssetType.FIAT
     ]
 
     # Wait, we need 'asset_type' in holdings_map to do this filter effectively.
     # Let's revise the loop above first to include it.
 
-    sorted_by_change = sorted(significant_holdings, key=lambda x: x.change_24h or 0, reverse=True)
+    sorted_by_change = sorted(
+        significant_holdings, key=lambda x: x.change_24h or 0, reverse=True
+    )
 
     movers = Movers()
     if sorted_by_change:
@@ -498,7 +508,9 @@ async def get_portfolio_history(
     start_time = now - delta if delta else None
 
     # 2. Fetch Snapshots
-    query = select(PortfolioSnapshot).where(PortfolioSnapshot.user_id == current_user.id)
+    query = select(PortfolioSnapshot).where(
+        PortfolioSnapshot.user_id == current_user.id
+    )
     if start_time:
         query = query.where(PortfolioSnapshot.timestamp >= start_time)
     query = query.order_by(PortfolioSnapshot.timestamp)
@@ -513,7 +525,9 @@ async def get_portfolio_history(
         # 1. Find the highest integration count present in this dataset
         max_ints = 0
         for s in snapshots:
-            count = s.data.get("integrations_count", 0) if isinstance(s.data, dict) else 0
+            count = (
+                s.data.get("integrations_count", 0) if isinstance(s.data, dict) else 0
+            )
             if count > max_ints:
                 max_ints = count
 
@@ -521,7 +535,11 @@ async def get_portfolio_history(
         if max_ints > 0:
             start_idx = 0
             for i, s in enumerate(snapshots):
-                count = s.data.get("integrations_count", 0) if isinstance(s.data, dict) else 0
+                count = (
+                    s.data.get("integrations_count", 0)
+                    if isinstance(s.data, dict)
+                    else 0
+                )
                 if count >= max_ints:
                     start_idx = i
                     break
@@ -550,16 +568,22 @@ async def get_portfolio_history(
 
 
 @router.get("/assets")
-async def get_dashboard_assets(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_dashboard_assets(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     assets_result = await db.execute(
-        select(UnifiedAsset).where(UnifiedAsset.user_id == current_user.id).order_by(desc(UnifiedAsset.usd_value))
+        select(UnifiedAsset)
+        .where(UnifiedAsset.user_id == current_user.id)
+        .order_by(desc(UnifiedAsset.usd_value))
     )
     assets = assets_result.scalars().all()
     return assets
 
 
 @router.get("/holdings", response_model=List[DetailedHoldingItem])
-async def get_detailed_holdings(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_detailed_holdings(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     """Returns granular list of assets (non-aggregated) with their integration source."""
     # Join UnifiedAsset with Integration to get provider details
     query = (
@@ -600,8 +624,12 @@ async def get_detailed_holdings(current_user: User = Depends(get_current_user), 
                 # Detailed extra fields
                 integration_id=asset.integration_id,
                 integration_name=int_name,
-                provider_id=str(provider_id.value) if hasattr(provider_id, "value") else str(provider_id),
-                asset_type=str(asset.asset_type.value) if hasattr(asset.asset_type, "value") else str(asset.asset_type),
+                provider_id=str(provider_id.value)
+                if hasattr(provider_id, "value")
+                else str(provider_id),
+                asset_type=str(asset.asset_type.value)
+                if hasattr(asset.asset_type, "value")
+                else str(asset.asset_type),
             )
         )
 

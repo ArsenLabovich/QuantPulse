@@ -41,7 +41,9 @@ class Freedom24Adapter(BaseAdapter):
         sorted_keys = sorted(body_dict.keys())
         body_str = "&".join(f"{k}={body_dict[k]}" for k in sorted_keys)
 
-        sig = hmac.new(api_secret.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256).hexdigest()
+        sig = hmac.new(
+            api_secret.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
 
         headers = {
             "X-NtApi-PublicKey": api_key,
@@ -51,11 +53,15 @@ class Freedom24Adapter(BaseAdapter):
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.post(url, data=body_dict, headers=headers, timeout=30.0)
+                response = await client.post(
+                    url, data=body_dict, headers=headers, timeout=30.0
+                )
                 logger.info(f"Freedom24 Request [{cmd}] Status: {response.status_code}")
 
                 if response.status_code != 200:
-                    logger.error(f"Freedom24 API Error {response.status_code}: {response.text}")
+                    logger.error(
+                        f"Freedom24 API Error {response.status_code}: {response.text}"
+                    )
                     return {"error": "HTTP Error", "errMsg": response.text}
 
                 return response.json()
@@ -78,8 +84,12 @@ class Freedom24Adapter(BaseAdapter):
             logger.info(f"Freedom24 Auth Verification: {res}")
 
             # code 0 or absence of error code usually means success
-            if not res or (isinstance(res, dict) and res.get("error") and res.get("code") != 0):
-                logger.error(f"Freedom24 Auth Check failed: {res.get('errMsg', 'Unknown error')}")
+            if not res or (
+                isinstance(res, dict) and res.get("error") and res.get("code") != 0
+            ):
+                logger.error(
+                    f"Freedom24 Auth Check failed: {res.get('errMsg', 'Unknown error')}"
+                )
                 return False
             return True
         except Exception as e:
@@ -124,20 +134,20 @@ class Freedom24Adapter(BaseAdapter):
                 return []
 
             # Access deep structure: result -> ps -> (pos, acc)
-            ps_data = res.get("result", {}).get("ps", {})
+            portfolio_snapshot = res.get("result", {}).get("ps", {})
 
             # 1. Parse Positions (Stocks/ETFs)
-            positions = ps_data.get("pos", [])
-            for pos in positions:
-                ticker = pos.get("i")
-                quantity = float(pos.get("q", 0))
+            positions = portfolio_snapshot.get("pos", [])
+            for position in positions:
+                ticker = position.get("i")
+                quantity = float(position.get("q", 0))
 
                 if quantity == 0:
                     continue
 
-                market_price = float(pos.get("mkt_price", 0))
-                currency = pos.get("curr", "USD")
-                name = pos.get("name")
+                market_price = float(position.get("mkt_price", 0))
+                currency = position.get("curr", "USD")
+                name = position.get("name")
 
                 if not ticker:
                     continue
@@ -152,7 +162,8 @@ class Freedom24Adapter(BaseAdapter):
                         amount=quantity,
                         price=market_price,
                         currency=currency,
-                        name=name or clean_ticker,  # Use cleaned ticker as fallback name
+                        name=name
+                        or clean_ticker,  # Use cleaned ticker as fallback name
                         asset_type=AssetType.STOCK,
                         change_24h=0.0,
                         image_url=IconResolver.get_icon_url(
@@ -166,18 +177,18 @@ class Freedom24Adapter(BaseAdapter):
                 )
 
             # 2. Parse Cash Accounts
-            accounts = ps_data.get("acc", [])
-            for acc in accounts:
-                currency = acc.get("curr")
+            accounts = portfolio_snapshot.get("acc", [])
+            for account in accounts:
+                currency = account.get("curr")
                 # field 's' is the settled balance
-                amount = float(acc.get("s", 0))
+                settled_amount = float(account.get("s", 0))
 
-                if amount > 0 and currency:
+                if settled_amount > 0 and currency:
                     assets_list.append(
                         AssetData(
                             symbol=currency,
                             original_symbol=currency,
-                            amount=amount,
+                            amount=settled_amount,
                             price=1.0,
                             currency=currency,
                             name=f"Cash ({currency})",

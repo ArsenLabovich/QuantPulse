@@ -24,7 +24,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from redis import Redis
+from redis.asyncio import Redis
 
 from core.config import settings
 
@@ -83,55 +83,94 @@ class DistributedLock:
         timeout_sec: Optional[float] = None,
         retry_interval_sec: Optional[float] = None,
     ) -> bool:
-        """Attempts to acquire the lock with a wait up to timeout_sec."""
-        eff_timeout = timeout_sec if timeout_sec is not None else settings.DLOCK_DEFAULT_TIMEOUT_SEC
-        eff_retry = retry_interval_sec if retry_interval_sec is not None else settings.DLOCK_RETRY_INTERVAL_SEC
+        """Attempts to acquire the lock with a wait up to timeout_sec using Pub/Sub."""
+        eff_timeout = (
+            timeout_sec
+            if timeout_sec is not None
+            else settings.DLOCK_DEFAULT_TIMEOUT_SEC
+        )
+        # retry_interval_sec is now used only for fallback polling/jitter
 
         self._token = str(uuid.uuid4())
         deadline = asyncio.get_event_loop().time() + eff_timeout
+        channel_name = f"dlock:channel:{self._key}"
 
-        while asyncio.get_event_loop().time() < deadline:
-            # SET key token NX PX ttl — atomic operation
-            result = self._redis.set(
-                self._key,
-                self._token,
-                nx=True,  # Only if key DOES NOT exist
-                px=self._ttl_ms,  # TTL in milliseconds
-            )
+        # 1. Optimistic first try
+        if await self._try_acquire():
+            return True
 
-            if result:
-                self._acquired = True
-                logger.debug(f"Lock acquired: {self._key} (token={self._token[:8]}...)")
-                return True
+        # 2. Wait with Pub/Sub
+        pubsub = self._redis.pubsub()
+        await pubsub.subscribe(channel_name)
 
-            # Lock is busy — wait and retry
-            await asyncio.sleep(eff_retry)
+        try:
+            while asyncio.get_event_loop().time() < deadline:
+                # Try to acquire
+                if await self._try_acquire():
+                    return True
+
+                # Wait for notification or timeout
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    break
+
+                # Wait for message with timeout
+                try:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=remaining
+                    )
+                    if message:
+                        # Someone released the lock, try to acquire immediately
+                        continue
+                except asyncio.TimeoutError:
+                    break
+
+                # Small sleep to prevent tight loop if pubsub fails or spurious wakeups
+                await asyncio.sleep(0.05)
+
+        finally:
+            await pubsub.unsubscribe(channel_name)
+            await pubsub.close()
 
         logger.warning(f"Lock acquire timeout: {self._key} after {eff_timeout}s")
         self._token = None
         return False
 
+    async def _try_acquire(self) -> bool:
+        """Atomic SET NX PX helper."""
+        result = await self._redis.set(
+            self._key,
+            self._token,
+            nx=True,
+            px=self._ttl_ms,
+        )
+        if result:
+            self._acquired = True
+            logger.debug(f"Lock acquired: {self._key}")
+            return True
+        return False
+
     async def release(self) -> bool:
-        """Releases the lock ONLY if we are the owner.
-
-        Uses a Lua script for atomic owner verification + deletion.
-        This prevents a situation where:
-        1. Worker A holds the lock
-        2. TTL expires
-        3. Worker B acquires the lock
-        4. Worker A tries to release() → WITHOUT Lua, it would delete Worker B's lock!
-
-        Returns:
-            True if the lock was ours and we released it.
-        """
+        """Releases the lock and notifies waiters via Pub/Sub."""
         if not self._token:
             return False
 
-        result = self._redis.eval(
-            _RELEASE_SCRIPT,
-            1,  # Number of KEYS
-            self._key,  # KEYS[1]
-            self._token,  # ARGV[1]
+        # Release Script + Publish Notification
+        # KEYS[1] = lock_key, ARGV[1] = token, ARGV[2] = channel_name
+        _RELEASE_PUBLISH_SCRIPT = """
+        if redis.call("GET", KEYS[1]) == ARGV[1] then
+            local del_res = redis.call("DEL", KEYS[1])
+            if del_res == 1 then
+                redis.call("PUBLISH", ARGV[2], "RELEASED")
+            end
+            return del_res
+        end
+        return 0
+        """
+
+        channel_name = f"dlock:channel:{self._key}"
+        result = await self._redis.eval(
+            _RELEASE_PUBLISH_SCRIPT, 1, self._key, self._token, channel_name
         )
 
         released = bool(result)
@@ -186,7 +225,9 @@ class LockManager:
     def __init__(self, redis_client: Redis):
         self._redis = redis_client
 
-    def sync_lock(self, user_id: int, integration_id: str, ttl_sec: Optional[int] = None) -> DistributedLock:
+    def sync_lock(
+        self, user_id: int, integration_id: str, ttl_sec: Optional[int] = None
+    ) -> DistributedLock:
         """Lock for syncing a specific integration."""
         return DistributedLock(
             self._redis,
@@ -194,7 +235,9 @@ class LockManager:
             ttl_sec=ttl_sec if ttl_sec is not None else settings.SYNC_LOCK_TTL_SEC,
         )
 
-    def snapshot_lock(self, user_id: int, ttl_sec: Optional[int] = None) -> DistributedLock:
+    def snapshot_lock(
+        self, user_id: int, ttl_sec: Optional[int] = None
+    ) -> DistributedLock:
         """Lock for creating a user's portfolio snapshot."""
         return DistributedLock(
             self._redis,
