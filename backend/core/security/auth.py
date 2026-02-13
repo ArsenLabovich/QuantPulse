@@ -1,10 +1,29 @@
-"""Authentication logic: password hashing and JWT token management."""
-
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import jwt
 from core.config import settings
 import bcrypt
+
+
+def validate_password_strength(password: str) -> bool:
+    """Validates password strength based on frontend rules.
+
+    Rules:
+    - Minimum 8 characters
+    - At least 1 lowercase letter
+    - At least 1 uppercase letter
+    - At least 1 number
+    """
+    if len(password) < 8:
+        return False
+    if not re.search(r"[a-z]", password):
+        return False
+    if not re.search(r"[A-Z]", password):
+        return False
+    if not re.search(r"[0-9]", password):
+        return False
+    return True
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -33,7 +52,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    encoded_jwt = jwt.encode(
+        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+    )
     return encoded_jwt
 
 
@@ -42,7 +63,11 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + timedelta(
+            minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
+        )
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    encoded_jwt = jwt.encode(
+        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+    )
     return encoded_jwt

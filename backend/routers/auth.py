@@ -18,10 +18,17 @@ from core.config import settings
 from jose import JWTError, jwt
 from fastapi import Body
 
+from fastapi_limiter.depends import RateLimiter
+
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=Token)
+@router.post(
+    "/register",
+    response_model=Token,
+    dependencies=[Depends(RateLimiter(times=5, seconds=60))],
+)
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == user.email))
     if result.scalars().first():
@@ -34,7 +41,9 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(db_user)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": db_user.email}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={"sub": db_user.email}, expires_delta=access_token_expires
+    )
     refresh_token = create_refresh_token(data={"sub": db_user.email})
     return {
         "access_token": access_token,
@@ -43,8 +52,14 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/token",
+    response_model=Token,
+    dependencies=[Depends(RateLimiter(times=5, seconds=60))],
+)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(select(User).filter(User.email == form_data.username))
     user = result.scalars().first()
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -54,7 +69,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
     refresh_token = create_refresh_token(data={"sub": user.email})
     return {
         "access_token": access_token,
@@ -64,14 +81,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(refresh_token: str = Body(..., embed=True), db: AsyncSession = Depends(get_db)):
+async def refresh_token(
+    refresh_token: str = Body(..., embed=True), db: AsyncSession = Depends(get_db)
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
         email: str = payload.get("sub")
         token_type: str = payload.get("type")
         if email is None or token_type != "refresh":
@@ -85,7 +106,9 @@ async def refresh_token(refresh_token: str = Body(..., embed=True), db: AsyncSes
         raise credentials_exception
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
     # Rotate refresh token (optional but recommended)
     new_refresh_token = create_refresh_token(data={"sub": user.email})
     return {

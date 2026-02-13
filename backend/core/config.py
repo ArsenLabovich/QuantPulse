@@ -6,7 +6,10 @@ import os
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/quantpulse"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/quantpulse"
+    )
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # Secrets must be loaded from environment for security
     SECRET_KEY: str = os.getenv("SECRET_KEY")
