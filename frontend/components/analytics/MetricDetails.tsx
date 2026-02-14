@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
     LineChart, Line, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ZAxis
 } from "recharts";
-import { ArrowLeft, Info, HelpCircle } from "lucide-react";
+import { ArrowLeft, Info, HelpCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
+import api from "@/lib/api";
 
 interface MetricDetailsProps {
     slug: string;
@@ -53,81 +54,36 @@ const DATES = generateDateSeries(90);
 const METRIC_CONFIG: Record<string, any> = {
     "monte-carlo": {
         title: "Monte Carlo Simulation",
-        description: "Projects thousands of possible future price paths based on historical volatility and drift. The chart shows 5 representative outcomes.",
-        color: "#10B981", // Emerald
-        type: "multi-line",
-        data: DATES.map((date, i) => ({
-            date,
-            sim1: generateRandomSeries(90, 100, 3)[i],
-            sim2: generateRandomSeries(90, 100, 3)[i],
-            sim3: generateRandomSeries(90, 100, 3)[i],
-            simMean: generateRandomSeries(90, 100, 1)[i],
-        })),
-        stats: [
-            { label: "P95 Outcome", value: "$1.45M" },
-            { label: "Mean Outcome", value: "$1.20M" },
-            { label: "P5 Outcome", value: "$0.85M" },
-        ]
+        description: "Projects thousands of possible future price paths based on historical volatility and drift.",
+        color: "#10B981",
+        type: "placeholder",
     },
     "drawdown": {
         title: "Max Drawdown Analysis",
         description: "Visualizes the decline from a historical peak. Helps understand the depth and duration of losses.",
-        color: "#F43F5E", // Rose
-        type: "area-negative",
-        data: DATES.map((date, i) => ({
-            date,
-            value: generateDrawdownSeries(90)[i]
-        })),
-        stats: [
-            { label: "Max Drawdown", value: "-18.4%" },
-            { label: "Current Depth", value: "-4.2%" },
-            { label: "Recovery Time", value: "42 Days" },
-        ]
+        color: "#F43F5E",
+        type: "placeholder",
     },
     "volatility": {
         title: "Rolling Volatility (30D)",
         description: "Measures the standard deviation of returns over a rolling 30-day window. Higher values indicate higher risk.",
-        color: "#F59E0B", // Amber
+        color: "#F59E0B",
         type: "line",
-        data: DATES.map((date, i) => ({
-            date,
-            value: 10 + Math.random() * 15
-        })),
-        stats: [
-            { label: "Current Vol", value: "14.2%" },
-            { label: "Avg Vol (1Y)", value: "18.5%" },
-            { label: "Vol Spike", value: "Nov 12" },
-        ]
+        data: [],
+        stats: [],
+        live: true,
     },
-    "risk": { // VaR
+    "risk": {
         title: "Value at Risk (VaR)",
         description: "The maximum expected loss over a specific time horizon at a given confidence level (95%).",
         color: "#F43F5E",
-        type: "bar-distribution", // Mock distribution
-        data: Array.from({ length: 20 }, (_, i) => ({
-            range: `${(i - 10)}%`,
-            frequency: Math.exp(-Math.pow(i - 10, 2) / 8) * 100 // Bell curveish
-        })),
-        stats: [
-            { label: "VaR (95%)", value: "-$420" },
-            { label: "VaR (99%)", value: "-$650" },
-            { label: "CVaR (Expected Shortfall)", value: "-$510" },
-        ]
+        type: "placeholder",
     },
     "sharpe": {
         title: "Sharpe Ratio Trend",
         description: "Risk-adjusted return relative to the risk-free rate. A ratio > 1.0 is considered good.",
         color: "#10B981",
-        type: "line",
-        data: DATES.map((date, i) => ({
-            date,
-            value: 1.5 + (Math.random() - 0.5)
-        })),
-        stats: [
-            { label: "Current Ratio", value: "1.85" },
-            { label: "1Y High", value: "2.40" },
-            { label: "Risk-Free Rate", value: "4.2%" },
-        ]
+        type: "placeholder",
     },
     "sortino": {
         title: "Sortino Ratio Trend",
@@ -146,64 +102,72 @@ const METRIC_CONFIG: Record<string, any> = {
     },
     "treynor": {
         title: "Treynor Ratio",
-        description: "Measures returns earned in excess of that which could have been earned on a riskless investment per each unit of market risk.",
+        description: "Risk-adjusted return based on systematic risk (Beta) rather than total risk.",
         color: "#10B981",
-        type: "line",
-        data: DATES.map((date, i) => ({
-            date,
-            value: 12 + Math.random() * 2
-        })),
-        stats: [
-            { label: "Current", value: "12.5" },
-            { label: "Beta", value: "0.92" },
-            { label: "Excess Return", value: "11.5%" },
-        ]
+        type: "placeholder",
     },
     "beta": {
-        title: "Beta vs Benchmark (SPY)",
-        description: "Measures the volatility of an asset or portfolio in relation to the overall market.",
-        color: "#3B82F6", // Blue
-        type: "scatter",
-        data: generateScatterData(100),
-        stats: [
-            { label: "Beta", value: "0.92" },
-            { label: "Alpha", value: "+2.4%" },
-            { label: "Correlation", value: "0.85" },
-        ]
+        title: "Portfolio Beta",
+        description: "Measures the volatility of the portfolio in relation to the overall market.",
+        color: "#3B82F6",
+        type: "placeholder",
     },
     "r-squared": {
-        title: "R-Squared Analysis",
+        title: "R-Squared",
         description: "Represents the percentage of a fund or security's movements that can be explained by movements in a benchmark index.",
         color: "#3B82F6",
-        type: "bar-simple", // Just a visual bar
-        data: [{ name: "Explained", value: 85 }, { name: "Unexplained", value: 15 }],
-        stats: [
-            { label: "R-Squared", value: "85%" },
-            { label: "Benchmark", value: "SPY" },
-            { label: "Tracking Error", value: "3.2%" },
-        ]
+        type: "placeholder",
     },
     "correlations": {
         title: "Correlation Matrix",
         description: "Shows how assets in the portfolio move in relation to each other. Lower correlation means better diversification.",
         color: "#3B82F6",
-        type: "heatmap", // Custom render
-        data: null, // Custom
-        stats: [
-            { label: "Avg Correlation", value: "0.45" },
-            { label: "Highest Pair", value: "BTC-ETH (0.82)" },
-            { label: "Lowest Pair", value: "USDT-AAPL (0.02)" },
-        ]
+        type: "placeholder",
     }
 };
 
 export function MetricDetails({ slug }: MetricDetailsProps) {
-    const config = METRIC_CONFIG[slug] || {
+    const baseConfig = METRIC_CONFIG[slug] || {
         title: "Metric Analysis",
         description: "Detailed breakdown not yet available for this metric.",
         color: "#52525B",
         type: "placeholder"
     };
+
+    const [liveData, setLiveData] = useState<any>(null);
+    const [loading, setLoading] = useState(!!baseConfig.live);
+
+    useEffect(() => {
+        if (!baseConfig.live) return;
+        setLoading(true);
+        api.get(`/analytics/metric/${slug}`)
+            .then(({ data }) => setLiveData(data))
+            .catch(() => setLiveData(null))
+            .finally(() => setLoading(false));
+    }, [slug, baseConfig.live]);
+
+    const config = useMemo(() => {
+        if (!baseConfig.live || !liveData || liveData.status !== "ready") return baseConfig;
+
+        const rolling = liveData.meta?.rolling_30d || [];
+        return {
+            ...baseConfig,
+            data: rolling,
+            stats: [
+                { label: "Current Vol", value: liveData.display_value },
+                { label: "Daily Vol", value: `${((liveData.meta?.daily_vol || 0) * 100).toFixed(3)}%` },
+                { label: "Data Points", value: `${liveData.actual_days} days` },
+            ],
+        };
+    }, [baseConfig, liveData]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64 text-[#71717A]">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading analysis...
+            </div>
+        );
+    }
 
     const renderChart = () => {
         switch (config.type) {
@@ -356,12 +320,14 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
             </div>
 
             {/* Info Block */}
-            <div className="p-4 rounded-lg bg-[#18181B] border border-[#27272A] flex gap-3 items-start">
-                <Info className="w-5 h-5 text-[#52525B] mt-0.5 shrink-0" />
-                <div className="text-sm text-[#71717A] leading-relaxed">
-                    Tip: This analysis is currently demonstrating mock data for frontend validation. Once the portfolio backend is fully synchronized, these charts will reflect your live asset performance.
+            {!config.live && (
+                <div className="p-4 rounded-lg bg-[#18181B] border border-[#27272A] flex gap-3 items-start">
+                    <Info className="w-5 h-5 text-[#52525B] mt-0.5 shrink-0" />
+                    <div className="text-sm text-[#71717A] leading-relaxed">
+                        This metric is currently under development. Detailed analysis will be available in the next update.
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

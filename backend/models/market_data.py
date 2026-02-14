@@ -1,6 +1,6 @@
 """Database models for market data."""
 
-from sqlalchemy import Column, String, DateTime, Numeric, BigInt
+from sqlalchemy import Column, String, DateTime, Numeric, BigInteger
 from sqlalchemy.sql import func
 from core.database import Base
 
@@ -20,6 +20,6 @@ class HistoricalCandle(Base):
     high = Column(Numeric(precision=30, scale=8), nullable=False)
     low = Column(Numeric(precision=30, scale=8), nullable=False)
     close = Column(Numeric(precision=30, scale=8), nullable=False)
-    volume = Column(BigInt, nullable=True)
+    volume = Column(BigInteger, nullable=True)
 
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
