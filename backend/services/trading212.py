@@ -24,11 +24,22 @@ class Trading212Client:
         self.base_url = self.DEMO_URL if is_demo else self.LIVE_URL
         self.redis = redis_client
 
-        # Use Basic Auth: username=api_key, password=api_secret (or empty)
-        # Verify: If user only has one key, maybe it goes in username?
-        # User provided ID + Secret -> ID=user, Secret=pass.
         self._auth = (self.api_key, self.api_secret)
         self._headers = {"Content-Type": "application/json"}
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                auth=self._auth,
+                headers=self._headers,
+                timeout=httpx.Timeout(20.0, connect=10.0),
+            )
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def _request(self, method: str, endpoint: str) -> Dict[str, Any]:
         from tenacity import (
@@ -42,16 +53,11 @@ class Trading212Client:
         def wait_trading212_ratelimit(retry_state):
             """Custom wait strategy for Trading212 429 errors."""
             last_exception = retry_state.outcome.exception()
-            if (
-                isinstance(last_exception, httpx.HTTPStatusError)
-                and last_exception.response.status_code == 429
-            ):
+            if isinstance(last_exception, httpx.HTTPStatusError) and last_exception.response.status_code == 429:
                 # 1. Try standard Retry-After
                 retry_after = last_exception.response.headers.get("Retry-After")
                 if retry_after:
-                    logger.warning(
-                        f"Trading212 Rate Limit: Standard Retry-After {retry_after}s"
-                    )
+                    logger.warning(f"Trading212 Rate Limit: Standard Retry-After {retry_after}s")
                     return float(retry_after)
 
                 # 2. Try x-ratelimit-reset (Unix Timestamp)
@@ -59,53 +65,43 @@ class Trading212Client:
                 if reset_time:
                     try:
                         wait_seconds = float(reset_time) - time.time()
-                        wait_seconds = max(wait_seconds, 1.0)  # Ensure at least 1s
-                        logger.warning(
-                            f"Trading212 Rate Limit: x-ratelimit-reset. Waiting {wait_seconds:.2f}s"
-                        )
+                        wait_seconds = max(wait_seconds, 2.0)  # Ensure at least 2s
+                        logger.warning(f"Trading212 Rate Limit: x-ratelimit-reset. Waiting {wait_seconds:.2f}s")
                         return wait_seconds
                     except ValueError:
                         pass
 
-            # Fallback: Exponential backoff (1s, 2s, 4s...)
-            return wait_exponential(multiplier=1, min=1, max=10)(retry_state)
+                # If 429 but no headers, wait a bit longer than usual
+                return 5.0 + wait_exponential(multiplier=1, min=1, max=10)(retry_state)
+
+            # Fallback: Exponential backoff
+            return wait_exponential(multiplier=2, min=2, max=30)(retry_state)
 
         @retry(
             retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
-            stop=stop_after_attempt(5),  # Increased to 5 attempts
+            stop=stop_after_attempt(6),
             wait=wait_trading212_ratelimit,
             reraise=True,
         )
         async def _make_request():
+            client = await self._get_client()
             url = f"{self.base_url}{endpoint}"
-            async with httpx.AsyncClient() as client:
-                try:
-                    response = await client.request(
-                        method,
-                        url,
-                        auth=self._auth,
-                        headers=self._headers,
-                        timeout=15.0,  # Slightly longer timeout
-                    )
+            try:
+                response = await client.request(method, url)
 
-                    if response.status_code == 429:
-                        # Log 429 as warning and raise to trigger retry
-                        logger.warning(
-                            f"Trading 212 Rate Limit Hit [{url}]: {response.text}"
-                        )
-                        response.raise_for_status()
-
+                if response.status_code == 429:
+                    logger.warning(f"Trading 212 Rate Limit Hit [{url}]")
                     response.raise_for_status()
-                    return response.json()
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code != 429:
-                        logger.error(
-                            f"Trading 212 API Error [{url}]: {e.response.status_code} - {e.response.text}"
-                        )
-                    raise
-                except Exception as e:
-                    logger.error(f"Trading 212 Request Failed [{url}]: {e}")
-                    raise
+
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 429:
+                    logger.error(f"Trading 212 API Error [{url}]: {e.response.status_code} - {e.response.text}")
+                raise
+            except Exception as e:
+                logger.error(f"Trading 212 Request Failed [{url}]: {e}")
+                raise
 
         return await _make_request()
 

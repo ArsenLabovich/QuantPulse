@@ -10,6 +10,14 @@ from alembic import context
 
 # Import your Base and models here
 from core.database import Base, DATABASE_URL
+from models.user import User  # noqa: F401
+from models.integration import Integration  # noqa: F401
+from models.assets import UnifiedAsset  # noqa: F401
+from models.assets import PortfolioSnapshot  # noqa: F401
+from models.assets import PortfolioAggregate  # noqa: F401
+from models.assets import MarketPriceHistory  # noqa: F401
+from models.market_data import HistoricalCandle  # noqa: F401
+from models.analytics_result import AnalyticsResult  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
