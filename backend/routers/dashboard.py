@@ -6,7 +6,6 @@ from sqlalchemy import select, func, desc
 from typing import List, Optional
 import datetime
 import uuid
-import uuid
 
 from core.database import get_db
 from models.user import User

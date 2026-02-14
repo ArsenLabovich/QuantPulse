@@ -31,7 +31,7 @@ export function TopBar({ onLogout }: TopBarProps) {
     const navItems = [
         { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
         { href: "/dashboard/portfolio", icon: Briefcase, label: "Portfolio" },
-        { href: "/dashboard/analytics", icon: Activity, label: "X-Ray" },
+        { href: "/dashboard/analytics", icon: Activity, label: "Quant Analytics" },
         { href: "/dashboard/ai", icon: Bot, label: "Assistant" },
     ];
 

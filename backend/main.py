@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
 from core.config import settings
-from routers import auth, dashboard, integrations, users
+from routers import auth, dashboard, integrations, users, analytics
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 app.include_router(dashboard.router)
+app.include_router(analytics.router)
 
 
 @app.get("/")

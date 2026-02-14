@@ -26,6 +26,9 @@ yfinance = "^0.2.36"
 tradernet-sdk = "^1.0.0"
 fastapi-limiter = "^0.1.6"
 tenacity = "^9.0.0"
+pandas = "^2.2.0"
+numpy = "^1.26.0"
+scipy = "^1.12.0"
 
 [build-system]
 requires = ["poetry-core"]
