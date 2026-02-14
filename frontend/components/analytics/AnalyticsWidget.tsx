@@ -74,7 +74,7 @@ export function AnalyticsWidget({
                 <div className="z-10 relative">
                     <h3 className="text-sm font-medium text-[#E4E4E5] mb-2">{title}</h3>
                     <div className="flex flex-col">
-                        {value && value !== "--" && (
+                        {value && (
                             <span className="text-3xl font-bold text-white tracking-tight mb-2">{value}</span>
                         )}
                         {description && (

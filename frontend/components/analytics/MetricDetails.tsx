@@ -2,11 +2,10 @@
 
 import { useMemo, useState, useEffect } from "react";
 import {
-    LineChart, Line, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ZAxis
+    LineChart, Line, AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from "recharts";
 import { ArrowLeft, Info, HelpCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { clsx } from "clsx";
 import api from "@/lib/api";
 
 interface MetricDetailsProps {
@@ -22,36 +21,21 @@ const generateDateSeries = (days = 30) => {
     });
 };
 
-const generateRandomSeries = (length = 30, base = 100, vol = 2) => {
-    let current = base;
-    return Array.from({ length }, () => {
-        current += (Math.random() - 0.5) * vol;
-        return current;
-    });
-};
-
-const generateDrawdownSeries = (length = 30) => {
-    let peak = 100;
-    let current = 100;
-    return Array.from({ length }, () => {
-        const move = (Math.random() - 0.45) * 5;
-        current += move;
-        if (current > peak) peak = current;
-        return ((current - peak) / peak) * 100;
-    });
-};
-
-const generateScatterData = (length = 50) => {
-    return Array.from({ length }, () => ({
-        x: (Math.random() - 0.5) * 4, // Market Return
-        y: ((Math.random() - 0.5) * 4) * 0.9 + (Math.random() - 0.5) // Asset Return (correlated)
-    }));
-};
 
 const DATES = generateDateSeries(90);
 
+interface MetricConfig {
+    title: string;
+    description: string;
+    color: string;
+    type: string;
+    data?: { date: string; value: number }[] | Record<string, unknown>[];
+    stats?: { label: string; value: string }[];
+    live?: boolean;
+}
+
 // Configuration for each metric
-const METRIC_CONFIG: Record<string, any> = {
+const METRIC_CONFIG: Record<string, MetricConfig> = {
     "monte-carlo": {
         title: "Monte Carlo Simulation",
         description: "Projects thousands of possible future price paths based on historical volatility and drift.",
@@ -90,7 +74,7 @@ const METRIC_CONFIG: Record<string, any> = {
         description: "Similar to Sharpe, but only penalizes downside volatility. Better for strategies with upside skew.",
         color: "#10B981",
         type: "line",
-        data: DATES.map((date, i) => ({
+        data: DATES.map((date) => ({
             date,
             value: 2.0 + (Math.random() - 0.4)
         })),
@@ -126,24 +110,75 @@ const METRIC_CONFIG: Record<string, any> = {
     }
 };
 
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: { name?: string; value: number; stroke?: string; fill?: string; dataKey?: string; payload: { date?: string } }[];
+}
+
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="p-2 bg-[#18181B] border border-[#27272A] rounded-md shadow-lg text-sm text-white">
+                <p className="font-bold mb-1">{payload[0].payload.date}</p>
+                {payload.map((entry, index) => (
+                    <p key={`item-${index}`} style={{ color: entry.stroke || entry.fill }}>
+                        {entry.name || entry.dataKey}: {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}
+                    </p>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
+interface MetricData {
+    status: string;
+    display_value: string;
+    actual_days: number;
+    meta?: {
+        daily_vol?: number;
+        rolling_30d?: { date: string; value: number }[];
+    };
+}
+
 export function MetricDetails({ slug }: MetricDetailsProps) {
-    const baseConfig = METRIC_CONFIG[slug] || {
+    const baseConfig = useMemo(() => METRIC_CONFIG[slug] || {
         title: "Metric Analysis",
         description: "Detailed breakdown not yet available for this metric.",
         color: "#52525B",
         type: "placeholder"
-    };
+    }, [slug]);
 
-    const [liveData, setLiveData] = useState<any>(null);
+    const [liveData, setLiveData] = useState<MetricData | null>(null);
     const [loading, setLoading] = useState(!!baseConfig.live);
+    const [prevSlug, setPrevSlug] = useState(slug);
+
+    if (slug !== prevSlug) {
+        setPrevSlug(slug);
+        if (baseConfig.live) {
+            setLoading(true);
+        }
+    }
 
     useEffect(() => {
         if (!baseConfig.live) return;
-        setLoading(true);
-        api.get(`/analytics/metric/${slug}`)
-            .then(({ data }) => setLiveData(data))
-            .catch(() => setLiveData(null))
-            .finally(() => setLoading(false));
+
+        const controller = new AbortController();
+        // setLoading(true); // Moved to render phase for prop changes
+
+        api.get(`/analytics/metric/${slug}`, { signal: controller.signal })
+            .then(({ data }) => {
+                setLiveData(data);
+                setLoading(false);
+            })
+            .catch((err) => {
+                if (err.name !== 'CanceledError') {
+                    setLiveData(null);
+                    setLoading(false);
+                }
+            });
+
+        return () => controller.abort();
     }, [slug, baseConfig.live]);
 
     const config = useMemo(() => {
@@ -178,7 +213,7 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
                             <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
                             <XAxis dataKey="date" stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={30} />
                             <YAxis stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                            <Tooltip contentStyle={{ backgroundColor: '#18181B', border: '1px solid #27272A', borderRadius: '8px' }} itemStyle={{ color: '#E4E4E7' }} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Line type="monotone" dataKey="sim1" stroke={config.color} strokeOpacity={0.3} dot={false} strokeWidth={1} />
                             <Line type="monotone" dataKey="sim2" stroke={config.color} strokeOpacity={0.3} dot={false} strokeWidth={1} />
                             <Line type="monotone" dataKey="sim3" stroke={config.color} strokeOpacity={0.3} dot={false} strokeWidth={1} />
@@ -199,7 +234,7 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
                             <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
                             <XAxis dataKey="date" stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={30} />
                             <YAxis stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
-                            <Tooltip contentStyle={{ backgroundColor: '#18181B', border: '1px solid #27272A', borderRadius: '8px' }} />
+                            <Tooltip content={<CustomTooltip />} />
                             <ReferenceLine y={0} stroke="#52525B" />
                             <Area type="monotone" dataKey="value" stroke={config.color} fillOpacity={1} fill="url(#colorVal)" />
                         </AreaChart>
@@ -218,7 +253,7 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
                             <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
                             <XAxis dataKey="date" stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={30} />
                             <YAxis stroke="#52525B" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                            <Tooltip contentStyle={{ backgroundColor: '#18181B', border: '1px solid #27272A', borderRadius: '8px' }} />
+                            <Tooltip content={<CustomTooltip />} />
                             <Area type="monotone" dataKey="value" stroke={config.color} fill={`url(#grad-${slug})`} strokeWidth={2} />
                         </AreaChart>
                     </ResponsiveContainer>
@@ -305,7 +340,7 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
             {/* Key Stats Grid */}
             {config.stats && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {config.stats.map((stat: any, i: number) => (
+                    {config.stats.map((stat, i) => (
                         <div key={i} className="p-5 rounded-xl bg-[#121212] border border-[#27272A] flex flex-col items-center text-center hover:border-[#3F3F46] transition-colors">
                             <span className="text-xs text-[#71717A] uppercase tracking-wider font-medium mb-1">{stat.label}</span>
                             <span className="text-2xl font-bold text-white">{stat.value}</span>

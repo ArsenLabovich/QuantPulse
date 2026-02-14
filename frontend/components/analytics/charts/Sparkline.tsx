@@ -1,6 +1,6 @@
 "use client";
 
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, Tooltip } from "recharts";
 
 interface SparklineProps {
     data: { value: number }[];
@@ -9,7 +9,12 @@ interface SparklineProps {
     showTooltip?: boolean;
 }
 
-const CustomTooltip = ({ active, payload }: any) => {
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: { value: number }[];
+}
+
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
         return (
             <div className="bg-[#1F2123] border border-[#2A2D31] px-2 py-1 rounded text-xs text-white">
