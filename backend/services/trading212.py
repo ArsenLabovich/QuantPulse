@@ -1,3 +1,4 @@
+"""Trading212 API client implementation."""
 
 import httpx
 from typing import List, Dict, Any, Optional
@@ -5,46 +6,112 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class Trading212Client:
     LIVE_URL = "https://live.trading212.com/api/v0"
     DEMO_URL = "https://demo.trading212.com/api/v0"
+    CACHE_TTL_SEC = 86400  # 24 hours
 
-    def __init__(self, api_key: str, api_secret: Optional[str] = None, is_demo: bool = False):
+    def __init__(
+        self,
+        api_key: str,
+        api_secret: Optional[str] = None,
+        is_demo: bool = False,
+        redis_client: Optional[Any] = None,
+    ):
         self.api_key = api_key
         self.api_secret = api_secret or ""
         self.base_url = self.DEMO_URL if is_demo else self.LIVE_URL
-        
+        self.redis = redis_client
+
         # Use Basic Auth: username=api_key, password=api_secret (or empty)
         # Verify: If user only has one key, maybe it goes in username?
-        # User provided ID + Secret -> ID=user, Secret=pass. 
+        # User provided ID + Secret -> ID=user, Secret=pass.
         self._auth = (self.api_key, self.api_secret)
-        self._headers = {
-            "Content-Type": "application/json"
-        }
+        self._headers = {"Content-Type": "application/json"}
 
     async def _request(self, method: str, endpoint: str) -> Dict[str, Any]:
-        url = f"{self.base_url}{endpoint}"
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.request(
-                    method, 
-                    url, 
-                    auth=self._auth, 
-                    headers=self._headers,
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Trading 212 API Error [{self.base_url}]: {e.response.status_code} - {e.response.text}")
-                raise
-            except Exception as e:
-                logger.error(f"Trading 212 Request Failed: {e}")
-                raise
+        from tenacity import (
+            retry,
+            stop_after_attempt,
+            wait_exponential,
+            retry_if_exception_type,
+        )
+        import time
+
+        def wait_trading212_ratelimit(retry_state):
+            """Custom wait strategy for Trading212 429 errors."""
+            last_exception = retry_state.outcome.exception()
+            if (
+                isinstance(last_exception, httpx.HTTPStatusError)
+                and last_exception.response.status_code == 429
+            ):
+                # 1. Try standard Retry-After
+                retry_after = last_exception.response.headers.get("Retry-After")
+                if retry_after:
+                    logger.warning(
+                        f"Trading212 Rate Limit: Standard Retry-After {retry_after}s"
+                    )
+                    return float(retry_after)
+
+                # 2. Try x-ratelimit-reset (Unix Timestamp)
+                reset_time = last_exception.response.headers.get("x-ratelimit-reset")
+                if reset_time:
+                    try:
+                        wait_seconds = float(reset_time) - time.time()
+                        wait_seconds = max(wait_seconds, 1.0)  # Ensure at least 1s
+                        logger.warning(
+                            f"Trading212 Rate Limit: x-ratelimit-reset. Waiting {wait_seconds:.2f}s"
+                        )
+                        return wait_seconds
+                    except ValueError:
+                        pass
+
+            # Fallback: Exponential backoff (1s, 2s, 4s...)
+            return wait_exponential(multiplier=1, min=1, max=10)(retry_state)
+
+        @retry(
+            retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
+            stop=stop_after_attempt(5),  # Increased to 5 attempts
+            wait=wait_trading212_ratelimit,
+            reraise=True,
+        )
+        async def _make_request():
+            url = f"{self.base_url}{endpoint}"
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.request(
+                        method,
+                        url,
+                        auth=self._auth,
+                        headers=self._headers,
+                        timeout=15.0,  # Slightly longer timeout
+                    )
+
+                    if response.status_code == 429:
+                        # Log 429 as warning and raise to trigger retry
+                        logger.warning(
+                            f"Trading 212 Rate Limit Hit [{url}]: {response.text}"
+                        )
+                        response.raise_for_status()
+
+                    response.raise_for_status()
+                    return response.json()
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code != 429:
+                        logger.error(
+                            f"Trading 212 API Error [{url}]: {e.response.status_code} - {e.response.text}"
+                        )
+                    raise
+                except Exception as e:
+                    logger.error(f"Trading 212 Request Failed [{url}]: {e}")
+                    raise
+
+        return await _make_request()
 
     async def validate_keys(self) -> Dict[str, bool]:
-        """
-        Validates keys by trying Live then Demo.
+        """Validates keys by trying Live then Demo.
+
         Returns dict with success status and is_demo flag.
         """
         # Try Live First
@@ -71,40 +138,61 @@ class Trading212Client:
             return {"valid": False, "is_demo": False}
 
     async def get_account_cash(self) -> Dict[str, Any]:
-        """
-        Fetches account cash balance.
-        Ref: https://docs.trading212.com/#operation/getAccountCash
+        """Fetches account cash balance.
+
+        Ref: https://docs.trading212.com/#operation/getAccountCash.
         """
         return await self._request("GET", "/equity/account/cash")
 
     async def get_account_metadata(self) -> Dict[str, Any]:
-        """
-        Fetches account metadata including currency.
-        Ref: https://docs.trading212.com/#operation/getAccountInfo
+        """Fetches account metadata including currency.
+
+        Ref: https://docs.trading212.com/#operation/getAccountInfo.
         """
         return await self._request("GET", "/equity/account/info")
 
     async def get_instruments(self) -> List[Dict[str, Any]]:
+        """Fetches instrument metadata (names, currencies, etc).
+
+        Ref: https://t212public-api-docs.redoc.ly/#operation/getInstruments.
         """
-        Fetches instrument metadata (names, currencies, etc).
-        Ref: https://t212public-api-docs.redoc.ly/#operation/getInstruments
-        """
-        return await self._request("GET", "/equity/metadata/instruments")
+        if not self.redis:
+            return await self._request("GET", "/equity/metadata/instruments")
+
+        import json
+        import hashlib
+
+        # 1. Generate cache key based on API Key hash (to isolate users)
+        key_hash = hashlib.md5(self.api_key.encode()).hexdigest()
+        cache_key = f"t212:instruments:{key_hash}"
+
+        # 2. Try Cache
+        cached_data = await self.redis.get(cache_key)
+        if cached_data:
+            logger.info("Returning cached Trading212 instruments")
+            return json.loads(cached_data)
+
+        # 3. Fetch from API
+        logger.info("Fetching Trading212 instruments from API")
+        data = await self._request("GET", "/equity/metadata/instruments")
+
+        # 4. Save to Cache
+        await self.redis.set(cache_key, json.dumps(data), ex=self.CACHE_TTL_SEC)
+
+        return data
 
     async def get_open_positions(self) -> List[Dict[str, Any]]:
-        """
-        Fetches all open positions.
-        Ref: https://docs.trading212.com/#operation/getPositions
+        """Fetches all open positions.
+
+        Ref: https://docs.trading212.com/#operation/getPositions.
         """
         return await self._request("GET", "/equity/portfolio")
 
     @staticmethod
     def normalize_ticker(ticker: str) -> str:
-        """
-        Removes T212 specific suffixes to get a clean ticker useful for other APIs.
-        """
-        ticker = ticker.upper() # Ensure uppercase
-        
+        """Removes T212 specific suffixes to get a clean ticker useful for other APIs."""
+        ticker = ticker.upper()  # Ensure uppercase
+
         if ticker.endswith("_US_EQ"):
             return ticker.replace("_US_EQ", "")
         elif ticker.endswith("_LSE"):
@@ -112,8 +200,8 @@ class Trading212Client:
         elif ticker.endswith("_DE"):
             return ticker.replace("_DE", ".DE")
         elif ticker.endswith("_EQ"):
-             # Fallback for generic EQ, usually LSE or just raw. 
-             # Try stripping it.
-             return ticker.replace("_EQ", "")
-        
+            # Fallback for generic EQ, usually LSE or just raw.
+            # Try stripping it.
+            return ticker.replace("_EQ", "")
+
         return ticker

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { X, Check, Lock, AlertTriangle, HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CustomTooltip } from "@/components/ui/CustomTooltip";
+import Image from "next/image";
 
 export interface IntegrationFormData {
     provider_id: string;
@@ -36,7 +36,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
         setStep(2);
     };
 
-    const validateForm = (isSubmit = false) => {
+    const validateForm = useCallback((isSubmit = false) => {
         const errors: { apiKey?: string[]; apiSecret?: string[] } = {};
         if (selectedProvider === "binance") {
             const key = formData.apiKey.trim();
@@ -92,7 +92,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
             }
         }
         return Object.keys(errors).length > 0 ? errors : null;
-    };
+    }, [formData, selectedProvider]);
 
     // Live validation
     useEffect(() => {
@@ -103,7 +103,7 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
             const errors = validateForm(false);
             setFormErrors(errors || {});
         }
-    }, [formData, step, isOpen]); // Added isOpen to dependencies
+    }, [formData, step, isOpen, validateForm]); // Added isOpen to dependencies
 
     if (!isOpen) return null;
 
@@ -138,11 +138,12 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
             setStep(1);
             setFormData({ name: "", apiKey: "", apiSecret: "" });
             setFormErrors({});
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Connection Error:", err);
+            const axiosError = err as { response?: { data?: { detail?: string } } };
             // Try to extract backend error message
-            if (err.response && err.response.data && err.response.data.detail) {
-                setError(err.response.data.detail);
+            if (axiosError.response?.data?.detail) {
+                setError(axiosError.response.data.detail);
             } else if (err instanceof Error) {
                 setError(err.message || "Failed to connect");
             } else {
@@ -166,10 +167,13 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                         {step === 2 && (
                             <div className="h-10 flex items-center justify-center rounded-lg">
                                 {selectedProvider && (
-                                    <img
+                                    <Image
                                         src={`/icons/full_icon/${selectedProvider}.svg`}
                                         alt={selectedProvider}
+                                        height={40}
+                                        width={120}
                                         className="h-full w-auto object-contain"
+                                        unoptimized
                                     />
                                 )}
                             </div>
@@ -288,10 +292,13 @@ export function AddIntegrationModal({ isOpen, onClose, onSubmit }: AddIntegratio
                                     className="bg-[#131722] hover:bg-[#1A1E29] border border-[#1F2123] hover:border-[#3978FF] rounded-xl p-8 flex flex-col items-center gap-4 transition-all group"
                                 >
                                     <div className={`w-24 h-24 flex items-center justify-center mb-2 rounded-3xl shadow-sm transition-transform group-hover:scale-110 overflow-hidden ${provider.bg} ${provider.padding}`}>
-                                        <img
+                                        <Image
                                             src={`/icons/square_icon/${provider.id}.svg`}
                                             alt={provider.name}
+                                            width={96}
+                                            height={96}
                                             className="w-full h-full object-contain rounded-3xl"
+                                            unoptimized
                                         />
                                     </div>
                                     <span className="text-white text-lg font-medium">{provider.name}</span>

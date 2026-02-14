@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { HoldingItem } from "@/types/dashboard";
+import Image from "next/image";
 
 interface MoversProps {
     gainer?: HoldingItem | null;
@@ -20,13 +21,17 @@ export function MoversWidget({ gainer, loser }: MoversProps) {
                         <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-full bg-[#131722] flex items-center justify-center text-sm font-bold text-gray-400 overflow-hidden ring-1 ring-white/10">
                                 {gainer.icon_url ? (
-                                    <img
+                                    <Image
                                         src={gainer.icon_url}
                                         alt={gainer.symbol}
+                                        width={48}
+                                        height={48}
                                         className="w-full h-full object-cover"
+                                        unoptimized
                                         onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                            e.currentTarget.parentElement?.querySelector('span')?.classList.remove('hidden');
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                            target.parentElement?.querySelector('span')?.classList.remove('hidden');
                                         }}
                                     />
                                 ) : null}
@@ -55,13 +60,17 @@ export function MoversWidget({ gainer, loser }: MoversProps) {
                         <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-full bg-[#131722] flex items-center justify-center text-sm font-bold text-gray-400 overflow-hidden ring-1 ring-white/10">
                                 {loser.icon_url ? (
-                                    <img
+                                    <Image
                                         src={loser.icon_url}
                                         alt={loser.symbol}
+                                        width={48}
+                                        height={48}
                                         className="w-full h-full object-cover"
+                                        unoptimized
                                         onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                            e.currentTarget.parentElement?.querySelector('span')?.classList.remove('hidden');
+                                            const target = e.target as HTMLImageElement;
+                                            target.style.display = 'none';
+                                            target.parentElement?.querySelector('span')?.classList.remove('hidden');
                                         }}
                                     />
                                 ) : null}

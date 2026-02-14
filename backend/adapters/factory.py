@@ -1,3 +1,5 @@
+"""Adapter Factory — Centralized creation logic for all brokerage adapters."""
+
 from typing import Dict, Type
 from adapters.base import BaseAdapter
 from adapters.binance_adapter import BinanceAdapter
@@ -6,12 +8,13 @@ from adapters.freedom24_adapter import Freedom24Adapter
 from adapters.bybit_adapter import BybitAdapter
 from models.integration import ProviderID
 
+
 class AdapterFactory:
     _adapters: Dict[ProviderID, Type[BaseAdapter]] = {
         ProviderID.binance: BinanceAdapter,
         ProviderID.trading212: Trading212Adapter,
         ProviderID.freedom24: Freedom24Adapter,
-        ProviderID.bybit: BybitAdapter
+        ProviderID.bybit: BybitAdapter,
     }
 
     @classmethod

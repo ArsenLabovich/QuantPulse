@@ -1,19 +1,17 @@
-"""add_market_price_history
+"""add_market_price_history.
 
 Revision ID: db8e60ffd7f6
 Revises: c3c2775a8420
 Create Date: 2026-02-02 11:00:04.962986
 
 """
-from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
+from typing import Sequence, Union
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'db8e60ffd7f6'
-down_revision: Union[str, Sequence[str], None] = 'c3c2775a8420'
+revision: str = "db8e60ffd7f6"
+down_revision: Union[str, Sequence[str], None] = "c3c2775a8420"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

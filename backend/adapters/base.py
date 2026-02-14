@@ -1,7 +1,10 @@
+"""Base classes and interfaces for all exchange adapters."""
+
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from models.assets import AssetType
+
 
 class AssetData(BaseModel):
     symbol: str
@@ -14,14 +17,19 @@ class AssetData(BaseModel):
     currency: str = "USD"
     image_url: Optional[str] = None
 
+
 class BaseAdapter(ABC):
     @abstractmethod
-    async def validate_credentials(self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None) -> bool:
+    async def validate_credentials(
+        self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """Validate if the provided credentials work."""
         pass
 
     @abstractmethod
-    async def fetch_balances(self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None) -> List[AssetData]:
+    async def fetch_balances(
+        self, credentials: Dict[str, Any], settings: Optional[Dict[str, Any]] = None
+    ) -> List[AssetData]:
         """Fetch all non-zero balances from the provider."""
         pass
 

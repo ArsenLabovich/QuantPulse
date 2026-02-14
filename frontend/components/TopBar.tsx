@@ -5,9 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     LayoutDashboard,
     Activity,
-    DollarSign,
     Plug,
-    Users,
     Settings,
     LogOut,
     Menu,
@@ -25,7 +23,7 @@ interface TopBarProps {
     onLogout: () => void;
 }
 
-export function TopBar({ userEmail, onLogout }: TopBarProps) {
+export function TopBar({ onLogout }: TopBarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -33,7 +31,7 @@ export function TopBar({ userEmail, onLogout }: TopBarProps) {
     const navItems = [
         { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
         { href: "/dashboard/portfolio", icon: Briefcase, label: "Portfolio" },
-        { href: "/dashboard/analytics", icon: Activity, label: "X-Ray" },
+        { href: "/dashboard/analytics", icon: Activity, label: "Quant Analytics" },
         { href: "/dashboard/ai", icon: Bot, label: "Assistant" },
     ];
 

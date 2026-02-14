@@ -9,8 +9,17 @@ interface TreemapWidgetProps {
 }
 
 // Custom Content Component for Treemap Cells
-const CustomizedContent = (props: any) => {
-    const { root, depth, x, y, width, height, index, payload, name, value, change } = props;
+const CustomizedContent = (props: {
+    depth?: number;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    name?: string;
+    value?: number;
+    change?: number;
+}) => {
+    const { depth = 0, x = 0, y = 0, width = 0, height = 0, name = "", value = 0, change = 0 } = props;
 
     // Ignore root node (depth 1 is usually the root in a flat hierarchy in Recharts? Or depth 0?)
     // In Recharts flat data, depth 1 are the items. depth 0 is root.

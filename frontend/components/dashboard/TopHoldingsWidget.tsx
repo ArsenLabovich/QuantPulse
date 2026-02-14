@@ -3,6 +3,7 @@
 import { HoldingItem } from "@/types/dashboard";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface TopHoldingsWidgetProps {
     data: HoldingItem[];
@@ -56,13 +57,17 @@ export function TopHoldingsWidget({ data, isLoading }: TopHoldingsWidgetProps) {
                                     <div className="flex items-center space-x-4 min-w-0">
                                         <div className="w-10 h-10 rounded-2xl bg-[#131722] flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-500 overflow-hidden shadow-sm border border-[#2A2E39] group-hover:border-gray-600 transition-colors">
                                             {asset.icon_url ? (
-                                                <img
+                                                <Image
                                                     src={asset.icon_url}
                                                     alt={asset.symbol}
+                                                    width={40}
+                                                    height={40}
                                                     className="w-full h-full object-cover"
+                                                    unoptimized
                                                     onError={(e) => {
-                                                        e.currentTarget.style.display = 'none';
-                                                        e.currentTarget.parentElement?.querySelector('span')?.classList.remove('hidden');
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none';
+                                                        target.parentElement?.querySelector('span')?.classList.remove('hidden');
                                                     }}
                                                 />
                                             ) : (

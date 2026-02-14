@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { AreaChart, Area, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 
 interface AssetDetailsDrawerProps {
     isOpen: boolean;
@@ -25,9 +26,6 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
     const totalValue = holdings.reduce((sum, h) => sum + h.value_usd, 0);
     // const weightedPrice = totalValue / totalBalance || asset?.price_usd || 0;
 
-    const weightedChange = totalValue > 0
-        ? holdings.reduce((sum, h) => sum + (h.change_24h || 0) * h.value_usd, 0) / totalValue
-        : (asset?.change_24h || 0);
 
     useEffect(() => {
         if (isOpen && asset?.symbol) {
@@ -64,13 +62,16 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-full bg-[#131722] flex items-center justify-center text-lg font-bold text-gray-400 overflow-hidden ring-1 ring-[#2A2E39]">
                                     {asset.icon_url ? (
-                                        <img
-                                            src={asset.icon_url || undefined}
+                                        <Image
+                                            src={asset.icon_url}
                                             alt={asset.symbol}
+                                            width={40}
+                                            height={40}
                                             className="w-full h-full object-cover"
+                                            unoptimized
                                             onError={(e) => {
-                                                e.currentTarget.src = "/icons/generic_asset.png";
-                                                e.currentTarget.onerror = null;
+                                                const target = e.target as HTMLImageElement;
+                                                target.src = "/icons/generic_asset.png";
                                             }}
                                         />
                                     ) : (
@@ -253,13 +254,19 @@ export function AssetDetailsDrawer({ isOpen, onClose, holdings }: AssetDetailsDr
                                         <div key={idx} className="bg-[#131722] rounded-xl p-4 border border-[#2A2E39] flex items-center justify-between transition-all hover:border-[#3978FF]/40 group">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-md bg-[#1E222D] flex items-center justify-center overflow-hidden border border-[#2A2E39] group-hover:border-[#3978FF]/30 transition-colors">
-                                                    <img
+                                                    <Image
                                                         src={`/icons/square_icon/${providerKey}.svg`}
                                                         alt={instanceLabel}
+                                                        width={32}
+                                                        height={32}
                                                         className="w-full h-full object-cover"
+                                                        unoptimized
                                                         onError={(e) => {
-                                                            (e.target as HTMLImageElement).style.display = 'none';
-                                                            (e.target as HTMLImageElement).parentElement!.innerText = instanceLabel[0] || '?';
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.style.display = 'none';
+                                                            if (target.parentElement) {
+                                                                target.parentElement.innerText = instanceLabel[0] || '?';
+                                                            }
                                                         }}
                                                     />
                                                 </div>

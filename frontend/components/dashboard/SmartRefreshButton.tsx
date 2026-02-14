@@ -12,20 +12,20 @@ export default function SmartRefreshButton({ onRefreshComplete }: SmartRefreshBu
     const [status, setStatus] = useState<"IDLE" | "PROGRESS" | "DONE" | "ERROR">("IDLE");
     const [message, setMessage] = useState("Initializing...");
     const [taskId, setTaskId] = useState<string | null>(null);
-    const [cooldown, setCooldown] = useState(0);
-    const pollInterval = useRef<NodeJS.Timeout | null>(null);
-
-    // Initial load of cooldown from local storage
-    useEffect(() => {
-        const savedCooldown = localStorage.getItem("refresh_cooldown");
-        if (savedCooldown) {
-            const expiry = parseInt(savedCooldown, 10);
-            const now = Date.now();
-            if (expiry > now) {
-                setCooldown(Math.ceil((expiry - now) / 1000));
+    const [cooldown, setCooldown] = useState(() => {
+        if (typeof window !== "undefined") {
+            const savedCooldown = localStorage.getItem("refresh_cooldown");
+            if (savedCooldown) {
+                const expiry = parseInt(savedCooldown, 10);
+                const now = Date.now();
+                if (expiry > now) {
+                    return Math.ceil((expiry - now) / 1000);
+                }
             }
         }
-    }, []);
+        return 0;
+    });
+    const pollInterval = useRef<NodeJS.Timeout | null>(null);
 
     // Cooldown timer
     useEffect(() => {

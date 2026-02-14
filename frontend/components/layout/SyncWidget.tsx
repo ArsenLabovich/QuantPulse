@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { RefreshCw, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { RefreshCw, Loader2, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
 import { useRefresh } from "@/context/RefreshContext";
 
@@ -9,7 +9,6 @@ export function SyncWidget() {
     const { triggerRefresh } = useRefresh();
     // IDLE | SYNCING | SUCCESS | COOLDOWN | ERROR
     const [status, setStatus] = useState<string>("IDLE");
-    const [cooldownRemaining, setCooldownRemaining] = useState(0);
     const [taskId, setTaskId] = useState<string | null>(null);
     const [autoSyncInterval, setAutoSyncInterval] = useState<number | null>(null);
     const [nextAutoSyncTime, setNextAutoSyncTime] = useState<Date | null>(null);
@@ -30,43 +29,42 @@ export function SyncWidget() {
 
         if (cachedInterval) {
             const interval = parseInt(cachedInterval, 10);
-            setAutoSyncInterval(interval);
 
-            if (cachedLastSync) {
-                // Calculate next wall-clock sync time (aligned to 10-minute marks)
-                const now = new Date();
-                const msPerInterval = interval * 1000;
-                const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
-                const next = new Date(nextTimestamp);
+            // Avoid synchronous set state in effect by using a small delay or separate effect
+            const initTimer = setTimeout(() => {
+                setAutoSyncInterval(interval);
 
-                setNextAutoSyncTime(next);
+                if (cachedLastSync) {
+                    const now = new Date();
+                    const msPerInterval = interval * 1000;
+                    const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
+                    const next = new Date(nextTimestamp);
 
-                // Calculate diff immediately for UI
-                const diff = Math.ceil((next.getTime() - now.getTime()) / 1000);
-                setTimeToAutoSync(diff);
-            }
+                    setNextAutoSyncTime(next);
+                    const diff = Math.ceil((next.getTime() - now.getTime()) / 1000);
+                    setTimeToAutoSync(diff);
+                }
+            }, 0);
+            return () => clearTimeout(initTimer);
         }
     }, []);
 
     const fetchStatus = useCallback(async () => {
         try {
             const response = await api.get("/dashboard/sync-status");
-            const { remaining_cooldown, active_task_id, last_sync_time, auto_sync_interval } = response.data;
+            const { active_task_id, last_sync_time, auto_sync_interval } = response.data;
 
             if (auto_sync_interval) {
                 setAutoSyncInterval(auto_sync_interval);
                 localStorage.setItem("auto_sync_interval", auto_sync_interval.toString());
 
-                // Calculate next wall-clock sync time (aligned to 10-minute marks)
-                // e.g. 13:24 -> 13:30, 13:30:05 -> 13:40
                 const now = new Date();
                 const msPerInterval = auto_sync_interval * 1000;
-                // Round up to next interval
                 const nextTimestamp = Math.ceil((now.getTime() + 1000) / msPerInterval) * msPerInterval;
                 const next = new Date(nextTimestamp);
 
                 setNextAutoSyncTime(next);
-                localStorage.setItem("last_sync_time", last_sync_time || now.toISOString()); // Still cache last sync for ref
+                localStorage.setItem("last_sync_time", last_sync_time || now.toISOString());
             }
 
             if (active_task_id) {
@@ -74,11 +72,10 @@ export function SyncWidget() {
                 setStatus("SYNCING");
                 isSyncingRef.current = true;
 
-                // Immediately fetch task details to restore progress
                 try {
                     const taskResponse = await api.get(`/dashboard/status/${active_task_id}`);
                     const taskData = taskResponse.data;
-                    if (taskData.info && typeof taskData.info === 'object') {
+                    if (taskData.info && typeof taskData.info === "object") {
                         if (taskData.info.current && taskData.info.total) {
                             const pct = Math.round((taskData.info.current / taskData.info.total) * 100);
                             setSyncProgress(pct);
@@ -91,24 +88,18 @@ export function SyncWidget() {
                     console.error("Failed to restore task progress", e);
                 }
             } else {
-                setCooldownRemaining(0);
                 setStatus("IDLE");
                 isSyncingRef.current = false;
             }
-            return 0;
         } catch (error) {
             console.error("Failed to fetch sync status", error);
-            return 0;
         }
     }, []);
 
     const handleSync = useCallback(async () => {
-        // Rely on status to prevent double-submit, but allow retry if previously failed (IDLE/ERROR)
-        // Disabled logic removed for testing
         if (status === "SYNCING") return;
 
         try {
-            // Clear auto-sync timer immediately to prevent loops
             setNextAutoSyncTime(null);
             setTimeToAutoSync(null);
 
@@ -119,12 +110,10 @@ export function SyncWidget() {
 
             const response = await api.post("/dashboard/refresh");
             setTaskId(response.data.task_id);
-        } catch (error: any) {
+        } catch (error: unknown) {
             isSyncingRef.current = false;
-            // If failed, restore auto-sync? Or just wait for user?
-            if (error.response?.status === 429) {
-                // Ignore 429, set IDLE
-                setCooldownRemaining(0);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((error as any).response?.status === 429) {
                 setStatus("IDLE");
             } else {
                 console.error("Sync trigger failed", error);
@@ -136,7 +125,10 @@ export function SyncWidget() {
 
     // Initial Load
     useEffect(() => {
-        fetchStatus();
+        const init = async () => {
+            await fetchStatus();
+        };
+        init();
     }, [fetchStatus]);
 
     // Auto-Sync and Cooldown Timer

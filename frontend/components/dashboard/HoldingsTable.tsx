@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, memo } from "react";
 import {
     useReactTable,
     getCoreRowModel,
@@ -14,6 +14,7 @@ import {
 import { ChevronDown, ChevronUp, Search, Layers, Filter, Check } from "lucide-react";
 import { DetailedHoldingItem } from "@/types/dashboard";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 
 // --- Types ---
 
@@ -76,10 +77,14 @@ const ProviderDropdown = ({
                         </div>
                     ) : (
                         <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-1.5 flex items-center justify-center overflow-hidden shrink-0 border border-[#2A2E39]">
-                            <img
+                            <Image
                                 src={`/icons/square_icon/${(selectedProviderItem?.id || 'binance').toLowerCase()}.svg`}
+                                alt={selectedProvider}
+                                width={32}
+                                height={32}
                                 className="w-full h-full object-contain rounded-md"
-                                onError={(e) => e.currentTarget.style.display = 'none'}
+                                unoptimized
+                                onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                             />
                         </div>
                     )}
@@ -118,10 +123,14 @@ const ProviderDropdown = ({
                                     className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === p.name ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-1.5 flex items-center justify-center overflow-hidden shrink-0 border border-[#2A2E39]">
-                                        <img
+                                        <Image
                                             src={`/icons/square_icon/${(p.id || 'binance').toLowerCase()}.svg`}
+                                            alt={p.name}
+                                            width={32}
+                                            height={32}
                                             className="w-full h-full object-contain rounded-md"
-                                            onError={(e) => e.currentTarget.style.display = 'none'}
+                                            unoptimized
+                                            onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                                         />
                                     </div>
                                     <span className="font-medium truncate">{p.name}</span>
@@ -297,14 +306,51 @@ const CurrencyDropdown = ({
     );
 };
 
+// --- Sub-Component: Table Skeleton ---
+const TableSkeleton = () => (
+    <div className="overflow-x-auto rounded-2xl border border-[#2A2E39] bg-[#1E222D]">
+        <table className="w-full text-left border-collapse">
+            <thead className="bg-[#151921] border-b border-[#2A2E39]">
+                <tr>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                        <th key={i} className="px-6 py-4">
+                            <div className="h-4 bg-[#2A2E39] rounded w-24 animate-pulse" />
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-[#2A2E39]">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i}>
+                        <td className="px-6 py-4">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-[#2A2E39] animate-pulse" />
+                                <div className="space-y-2">
+                                    <div className="h-4 bg-[#2A2E39] rounded w-16 animate-pulse" />
+                                    <div className="h-3 bg-[#2A2E39] rounded w-24 animate-pulse" />
+                                </div>
+                            </div>
+                        </td>
+                        <td className="px-6 py-4"><div className="h-4 bg-[#2A2E39] rounded w-20 animate-pulse" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-[#2A2E39] rounded w-16 animate-pulse" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-[#2A2E39] rounded w-24 animate-pulse" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-[#2A2E39] rounded w-20 animate-pulse" /></td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+);
+
 interface AssetTableProps {
     data: DetailedHoldingItem[];
     showIntegrationCol: boolean;
     onAssetClick: (asset: DetailedHoldingItem) => void;
 }
 
-function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps) {
+const AssetTable = memo(function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps) {
     const [sorting, setSorting] = useState<SortingState>([{ id: "value_usd", desc: true }]);
+    // ... existing AssetTable implementation ...
 
     const columnHelper = createColumnHelper<DetailedHoldingItem>();
 
@@ -320,13 +366,16 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                             {/* Large Square Icon */}
                             <div className="w-12 h-12 rounded-2xl bg-[#131722] flex items-center justify-center text-xs font-bold text-gray-500 overflow-hidden shadow-sm border border-[#2A2E39]">
                                 {row.icon_url ? (
-                                    <img
+                                    <Image
                                         src={row.icon_url}
                                         alt={row.symbol}
+                                        width={48}
+                                        height={48}
                                         className="w-full h-full object-cover"
+                                        unoptimized
                                         onError={(e) => {
-                                            e.currentTarget.src = "/icons/generic_asset.png";
-                                            e.currentTarget.onerror = null;
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = "/icons/generic_asset.png";
                                         }}
                                     />
                                 ) : (
@@ -369,9 +418,13 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                     <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-md bg-white p-0.5 flex items-center justify-center overflow-hidden">
                             {/* Try to load icon based on ID logic if we had it, for now rely on text or generic */}
-                            <img src={`/icons/square_icon/${(info.row.original.provider_id || 'binance').toLowerCase()}.svg`}
+                            <Image src={`/icons/square_icon/${(info.row.original.provider_id || 'binance').toLowerCase()}.svg`}
+                                alt={info.getValue() as string}
+                                width={24}
+                                height={24}
                                 className="w-full h-full object-contain"
-                                onError={(e) => e.currentTarget.style.display = 'none'}
+                                unoptimized
+                                onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                             />
                         </div>
                         <span className="text-sm font-medium text-gray-300">{info.getValue()}</span>
@@ -448,9 +501,11 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
                     );
                 },
             }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ].filter(Boolean) as ColumnDef<DetailedHoldingItem, any>[];
-    }, [showIntegrationCol]);
+    }, [showIntegrationCol, columnHelper]);
 
+    // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
         data,
         columns,
@@ -508,7 +563,7 @@ function AssetTable({ data, showIntegrationCol, onAssetClick }: AssetTableProps)
             </table>
         </div>
     );
-}
+});
 
 // --- Main Component ---
 
@@ -555,7 +610,7 @@ export function PortfolioTable({ data, allData, filters, onFilterChange, isLoadi
         return groups;
     }, [data, filters.groupByProvider, filters.viewMode]);
 
-    if (isLoading) return <div className="h-64 bg-[#1E222D] rounded-xl animate-pulse" />;
+    if (isLoading) return <TableSkeleton />;
 
     return (
         <div className="space-y-6">
@@ -653,9 +708,13 @@ export function PortfolioTable({ data, allData, filters, onFilterChange, isLoadi
                                 <div className="flex items-end justify-between mb-4 px-2">
                                     <h3 className="text-xl font-bold text-white flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center">
-                                            <img src={`/icons/square_icon/${(items[0]?.provider_id || 'binance').toLowerCase()}.svg`}
+                                            <Image src={`/icons/square_icon/${(items[0]?.provider_id || 'binance').toLowerCase()}.svg`}
+                                                alt={provider}
+                                                width={32}
+                                                height={32}
                                                 className="w-full h-full object-contain"
-                                                onError={(e) => e.currentTarget.style.display = 'none'}
+                                                unoptimized
+                                                onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                                             />
                                         </div>
                                         {provider}

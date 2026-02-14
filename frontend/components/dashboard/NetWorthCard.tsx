@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, DollarSign, Wallet } from "lucide-react";
 
 interface NetWorthCardProps {

@@ -27,12 +27,13 @@ export interface AllocationItem {
     value: number;
     percentage: number;
     color?: string;
+    [key: string]: unknown;
 }
 
 export interface HistoryItem {
     date: string;
     value: number;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export interface DashboardSummary {
