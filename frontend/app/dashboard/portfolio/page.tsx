@@ -7,34 +7,10 @@ import { PortfolioSummary } from "@/components/dashboard/PortfolioSummary";
 import { AssetDetailsDrawer } from "@/components/dashboard/AssetDetailsDrawer";
 import { useRefresh } from "@/context/RefreshContext";
 import { DetailedHoldingItem } from "@/types/dashboard";
+import { aggregateAssetsBySymbol } from "@/lib/assets";
 
 // Helper: Aggregation Logic (Lifted State)
-function aggregateBySymbol(items: DetailedHoldingItem[]): DetailedHoldingItem[] {
-    const map = new Map<string, DetailedHoldingItem>();
-
-    for (const item of items) {
-        if (!map.has(item.symbol)) {
-            map.set(item.symbol, { ...item, integration_name: "Multiple", provider_id: "multiple" });
-        } else {
-            const existing = map.get(item.symbol)!;
-            const totalVal = existing.value_usd + item.value_usd;
-            const totalBal = existing.balance + item.balance;
-            const existingWeight = existing.value_usd * (existing.change_24h || 0);
-            const itemWeight = item.value_usd * (item.change_24h || 0);
-            const newChange = totalVal > 0 ? (existingWeight + itemWeight) / totalVal : 0;
-
-            existing.value_usd = totalVal;
-            existing.balance = totalBal;
-            existing.change_24h = newChange;
-            existing.price_usd = totalBal > 0 ? totalVal / totalBal : existing.price_usd;
-
-            if (!existing.icon_url && item.icon_url) {
-                existing.icon_url = item.icon_url;
-            }
-        }
-    }
-    return Array.from(map.values());
-}
+// function aggregateBySymbol moved to @/lib/assets as aggregateAssetsBySymbol
 
 export default function PortfolioPage() {
     const { refreshKey } = useRefresh();
@@ -108,7 +84,7 @@ export default function PortfolioPage() {
 
         // 2. Aggregation
         if (filters.viewMode === 'aggregated' && !filters.groupByProvider) {
-            result = aggregateBySymbol(result);
+            result = aggregateAssetsBySymbol(result);
         }
 
         return result;
@@ -117,7 +93,7 @@ export default function PortfolioPage() {
     // Calculate aggregated count for summary
     const assetCount = useMemo(() => {
         return filters.viewMode === 'aggregated' && !filters.groupByProvider
-            ? aggregateBySymbol(holdings).length
+            ? aggregateAssetsBySymbol(holdings).length
             : holdings.length;
     }, [holdings, filters.viewMode, filters.groupByProvider]);
 

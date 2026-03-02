@@ -6,7 +6,11 @@ from contextlib import asynccontextmanager
 import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
 from core.config import settings
+from core.logging_config import setup_logging
 from routers import auth, dashboard, integrations, users, analytics
+
+# Initialize logging
+setup_logging()
 
 
 @asynccontextmanager

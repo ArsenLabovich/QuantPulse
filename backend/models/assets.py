@@ -33,6 +33,7 @@ class UnifiedAsset(Base):
     name = Column(String, nullable=True)  # Full name e.g. "Bitcoin"
     original_name = Column(String, nullable=False)
     asset_type = Column(Enum(AssetType), nullable=False)
+    isin = Column(String, nullable=True, index=True)
     amount = Column(Numeric(precision=30, scale=8), nullable=False)
     current_price = Column(Numeric(precision=30, scale=8), nullable=True)  # Price in original currency
     currency = Column(String, nullable=False, default="USD")  # Original currency (USD, EUR, GBP, BTC)

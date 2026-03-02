@@ -36,6 +36,42 @@ export interface HistoryItem {
     [key: string]: unknown;
 }
 
+export interface IntervalPreset {
+    label: "1W" | "1M" | "3M" | "1Y" | "Custom";
+    value: string; // "1w", "1m", "3m", "1y", "custom"
+    days?: number;
+}
+
+export interface VolatilityFilterState {
+    search: string;
+    assetType: "all" | "crypto" | "stock";
+    provider: string;
+}
+
+export interface AssetVolatility {
+    symbol: string;
+    daily_vol: number | null;
+    annual_vol: number | null;
+    data_points: number;
+    status: "ready" | "insufficient_data" | "pending";
+}
+
+export interface PortfolioVolatility {
+    annual_vol: number | null;
+    daily_vol: number | null;
+    display_value: string;
+    data_points: number;
+    alignment_loss: number;
+    confidence: "low" | "moderate" | "high" | null;
+    rolling_30d: { date: string; value: number }[];
+    status: string;
+}
+
+export interface VolatilityResult {
+    portfolio: PortfolioVolatility;
+    per_asset: AssetVolatility[];
+}
+
 export interface DashboardSummary {
     net_worth: number;
     daily_change: number;

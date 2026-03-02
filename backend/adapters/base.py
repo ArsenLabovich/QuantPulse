@@ -16,6 +16,7 @@ class AssetData(BaseModel):
     original_symbol: Optional[str] = None
     currency: str = "USD"
     image_url: Optional[str] = None
+    isin: Optional[str] = None
 
 
 class BaseAdapter(ABC):

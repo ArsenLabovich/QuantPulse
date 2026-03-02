@@ -1,14 +1,12 @@
 """Application configuration and environment settings management."""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import os
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/quantpulse"
-    )
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/quantpulse"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Secrets must be loaded from environment for security
@@ -34,6 +32,9 @@ class Settings(BaseSettings):
     DLOCK_RETRY_INTERVAL_SEC: float = 0.3
     DLOCK_DEFAULT_TIMEOUT_SEC: float = 10.0
 
+    # --- Analytics Settings ---
+    ANALYTICS_CACHE_TTL: int = 300  # seconds
+
     # Validate secrets exist
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -45,9 +46,7 @@ class Settings(BaseSettings):
             # raise ValueError("ENCRYPTION_KEY is missing from environment variables")
             pass
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"  # Allow extra env vars
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

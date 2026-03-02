@@ -75,15 +75,14 @@ class SnapshotService:
         new_assets_count: int,
     ) -> Optional[PortfolioSnapshot]:
         """Internal snapshot creation logic running under a lock."""
-        # 1. Check completeness — ensure all integrations have been synced
+        # 1. Check completeness — (Information only, no longer blocking)
         completeness = await self._check_completeness(db, user_id)
 
         if completeness["is_partial"]:
-            logger.info(
-                f"Skipping snapshot for user {user_id}: "
-                f"Partial data ({completeness['synced_count']}/{completeness['total_count']} integrations)."
+            logger.debug(
+                f"Partial data snapshot for user {user_id} "
+                f"({completeness['synced_count']}/{completeness['total_count']} integrations)."
             )
-            return None
 
         # 2. Calculate current net worth
         net_worth = await self._calculate_net_worth(db, user_id)
@@ -110,7 +109,9 @@ class SnapshotService:
         else:
             snapshot = self._create_new_snapshot(db, user_id, net_worth, snapshot_data)
 
+        # CRITICAL: Commit the snapshot to the database
         await db.commit()
+
         logger.info(f"Snapshot {'updated' if existing else 'created'} for user {user_id}: ${float(net_worth):,.2f}")
         return snapshot
 

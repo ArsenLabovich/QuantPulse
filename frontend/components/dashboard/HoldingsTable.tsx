@@ -68,11 +68,11 @@ const ProviderDropdown = ({
             )}
             <button
                 onClick={onToggle}
-                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[180px] transition-all relative z-20 ${isOpen ? 'border-[#3978FF] text-white shadow-lg shadow-[#3978FF]/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-[#3978FF]/50'}`}
+                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[180px] transition-all relative z-20 ${isOpen ? 'border-primary text-white shadow-lg shadow-primary/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-primary/50'}`}
             >
                 <div className="flex items-center gap-3 overflow-hidden">
                     {selectedProvider === 'all' ? (
-                        <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedProvider !== 'all' ? 'text-[#3978FF]' : 'text-gray-500'}`}>
+                        <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedProvider !== 'all' ? 'text-primary' : 'text-gray-500'}`}>
                             <Filter className="w-4 h-4" />
                         </div>
                     ) : (
@@ -92,7 +92,7 @@ const ProviderDropdown = ({
                         {selectedProvider === 'all' ? 'All Platforms' : selectedProvider}
                     </span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#3978FF]' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -107,7 +107,7 @@ const ProviderDropdown = ({
                         <div className="max-h-[300px] overflow-y-auto py-1 custom-scrollbar">
                             <button
                                 onClick={() => { onSelect('all'); onToggle(); }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === 'all' ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === 'all' ? 'bg-primary/10 text-primary' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                             >
                                 <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39]">
                                     <Filter className="w-4 h-4 text-gray-400" />
@@ -120,7 +120,7 @@ const ProviderDropdown = ({
                                 <button
                                     key={p.name}
                                     onClick={() => { onSelect(p.name); onToggle(); }}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === p.name ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedProvider === p.name ? 'bg-primary/10 text-primary' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-1.5 flex items-center justify-center overflow-hidden shrink-0 border border-[#2A2E39]">
                                         <Image
@@ -182,10 +182,10 @@ const AssetTypeDropdown = ({
             )}
             <button
                 onClick={onToggle}
-                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[160px] transition-all relative z-20 ${isOpen ? 'border-[#3978FF] text-white shadow-lg shadow-[#3978FF]/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-[#3978FF]/50'}`}
+                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[160px] transition-all relative z-20 ${isOpen ? 'border-primary text-white shadow-lg shadow-primary/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-primary/50'}`}
             >
                 <div className="flex items-center gap-3 overflow-hidden">
-                    <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedType !== 'all' ? 'text-[#3978FF]' : 'text-gray-500'}`}>
+                    <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedType !== 'all' ? 'text-primary' : 'text-gray-500'}`}>
                         {current.id === 'all' ? (
                             <Layers className="w-4 h-4" />
                         ) : (
@@ -198,7 +198,7 @@ const AssetTypeDropdown = ({
                         {current.label}
                     </span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#3978FF]' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -215,7 +215,7 @@ const AssetTypeDropdown = ({
                                 <button
                                     key={opt.id}
                                     onClick={() => { onSelect(opt.id); onToggle(); }}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedType === opt.id ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedType === opt.id ? 'bg-primary/10 text-primary' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39]">
                                         {opt.id === 'all' ? <Layers className="w-4 h-4" /> : <span className="font-bold text-xs">{opt.label[0]}</span>}
@@ -258,17 +258,17 @@ const CurrencyDropdown = ({
             )}
             <button
                 onClick={onToggle}
-                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[140px] transition-all relative z-20 ${isOpen ? 'border-[#3978FF] text-white shadow-lg shadow-[#3978FF]/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-[#3978FF]/50'}`}
+                className={`flex items-center justify-between gap-3 bg-[#131722] border rounded-xl pl-3 pr-3 py-2 text-sm min-w-[140px] transition-all relative z-20 ${isOpen ? 'border-primary text-white shadow-lg shadow-primary/10' : 'border-[#2A2E39] text-gray-300 hover:text-white hover:border-primary/50'}`}
             >
                 <div className="flex items-center gap-3 overflow-hidden">
-                    <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedCurrency !== 'all' ? 'text-[#3978FF]' : 'text-gray-500'}`}>
+                    <div className={`w-8 h-8 rounded-lg bg-[#2A2E39] p-2 flex items-center justify-center border border-[#2A2E39] ${selectedCurrency !== 'all' ? 'text-primary' : 'text-gray-500'}`}>
                         <span className="font-bold text-xs">{selectedCurrency === 'all' ? '$' : selectedCurrency.substring(0, 1)}</span>
                     </div>
                     <span className="truncate font-medium">
                         {selectedCurrency === 'all' ? 'All Currencies' : selectedCurrency}
                     </span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#3978FF]' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -283,7 +283,7 @@ const CurrencyDropdown = ({
                         <div className="py-1 max-h-[200px] overflow-y-auto custom-scrollbar">
                             <button
                                 onClick={() => { onSelect('all'); onToggle(); }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedCurrency === 'all' ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedCurrency === 'all' ? 'bg-primary/10 text-primary' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                             >
                                 <span className="font-medium">All Currencies</span>
                                 {selectedCurrency === 'all' && <Check className="w-4 h-4 ml-auto" />}
@@ -292,7 +292,7 @@ const CurrencyDropdown = ({
                                 <button
                                     key={curr}
                                     onClick={() => { onSelect(curr); onToggle(); }}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedCurrency === curr ? 'bg-[#3978FF]/10 text-[#3978FF]' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${selectedCurrency === curr ? 'bg-primary/10 text-primary' : 'text-gray-300 hover:bg-[#2A2E39] hover:text-white'}`}
                                 >
                                     <span className="font-medium">{curr}</span>
                                     {selectedCurrency === curr && <Check className="w-4 h-4 ml-auto" />}
@@ -355,6 +355,8 @@ const AssetTable = memo(function AssetTable({ data, showIntegrationCol, onAssetC
     const columnHelper = createColumnHelper<DetailedHoldingItem>();
 
     const columns = useMemo(() => {
+        const totalValue = data.reduce((sum, item) => sum + item.value_usd, 0);
+
         return [
             columnHelper.accessor("symbol", {
                 header: "Asset",
@@ -501,9 +503,22 @@ const AssetTable = memo(function AssetTable({ data, showIntegrationCol, onAssetC
                     );
                 },
             }),
+            columnHelper.accessor("value_usd", {
+                id: "share",
+                header: "Share",
+                cell: (info) => {
+                    const valUsd = info.getValue();
+                    const share = totalValue > 0 ? (valUsd / totalValue) * 100 : 0;
+                    return (
+                        <span className="text-gray-400 text-sm font-semibold tabular-nums">
+                            {share.toFixed(2)}%
+                        </span>
+                    );
+                },
+            }),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ].filter(Boolean) as ColumnDef<DetailedHoldingItem, any>[];
-    }, [showIntegrationCol, columnHelper]);
+    }, [showIntegrationCol, columnHelper, data]);
 
     // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
@@ -528,8 +543,8 @@ const AssetTable = memo(function AssetTable({ data, showIntegrationCol, onAssetC
                                     <div className="flex items-center gap-2">
                                         {flexRender(header.column.columnDef.header, header.getContext())}
                                         {{
-                                            asc: <ChevronUp className="w-3 h-3 text-[#3978FF]" />,
-                                            desc: <ChevronDown className="w-3 h-3 text-[#3978FF]" />,
+                                            asc: <ChevronUp className="w-3 h-3 text-primary" />,
+                                            desc: <ChevronDown className="w-3 h-3 text-primary" />,
                                         }[header.column.getIsSorted() as string] ?? null}
                                     </div>
                                 </th>
@@ -548,7 +563,7 @@ const AssetTable = memo(function AssetTable({ data, showIntegrationCol, onAssetC
                         table.getRowModel().rows.map(row => (
                             <tr
                                 key={row.id}
-                                className="hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                                className="hover:bg-white/2 transition-colors cursor-pointer group"
                                 onClick={() => onAssetClick(row.original)}
                             >
                                 {row.getVisibleCells().map(cell => (
@@ -618,13 +633,13 @@ export function PortfolioTable({ data, allData, filters, onFilterChange, isLoadi
             <div className="flex flex-col xl:flex-row gap-4 justify-between bg-[#1E222D] p-5 rounded-2xl border border-[#2A2E39] shadow-lg">
                 {/* Search */}
                 <div className="relative w-full xl:w-80 group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#3978FF] transition-colors">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-primary transition-colors">
                         <Search className="w-5 h-5" />
                     </div>
                     <input
                         type="text"
                         placeholder="Search assets..."
-                        className="w-full bg-[#131722] border border-[#2A2E39] rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-[#3978FF]/20 focus:border-[#3978FF] outline-none transition-all placeholder:text-gray-600"
+                        className="w-full bg-[#131722] border border-[#2A2E39] rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-gray-600"
                         value={filters.search}
                         onChange={(e) => onFilterChange({ ...filters, search: e.target.value })}
                     />
@@ -671,7 +686,7 @@ export function PortfolioTable({ data, allData, filters, onFilterChange, isLoadi
                                 key={opt.id}
                                 onClick={() => onFilterChange({ ...filters, performanceMode: opt.id })}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filters.performanceMode === opt.id
-                                    ? (opt.activeClass || 'bg-[#3978FF] text-white')
+                                    ? (opt.activeClass || 'bg-primary text-white')
                                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                                     }`}
                             >
@@ -688,7 +703,7 @@ export function PortfolioTable({ data, allData, filters, onFilterChange, isLoadi
                                 type="checkbox"
                                 checked={filters.hideDust}
                                 onChange={() => onFilterChange({ ...filters, hideDust: !filters.hideDust })}
-                                className="w-4 h-4 rounded border-[#2A2E39] bg-[#131722] text-[#3978FF] accent-[#3978FF] focus:ring-0 focus:ring-offset-0 focus:outline-none cursor-pointer transition-colors"
+                                className="w-4 h-4 rounded border-[#2A2E39] bg-[#131722] text-primary accent-primary focus:ring-0 focus:ring-offset-0 focus:outline-none cursor-pointer transition-colors"
                             />
                             <span className="text-xs font-medium text-gray-400 group-hover:text-white transition-colors">
                                 Hide assets {'<'} $1

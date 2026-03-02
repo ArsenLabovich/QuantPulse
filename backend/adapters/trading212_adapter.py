@@ -1,5 +1,6 @@
 """Trading212 Adapter — Implementation for Trading212 brokerage API."""
 
+import asyncio
 from typing import List, Dict, Any, Optional
 from adapters.base import BaseAdapter, AssetData
 from services.trading212 import Trading212Client
@@ -58,6 +59,7 @@ class Trading212Adapter(BaseAdapter):
                 raise
 
             account_currency = account_meta.get("currencyCode", "USD")
+            await asyncio.sleep(1.0)  # Rate limit politeness
 
             # 2. Cash
             cash_data = await client.get_account_cash()
@@ -83,6 +85,8 @@ class Trading212Adapter(BaseAdapter):
 
             # 3. Positions
             positions = await client.get_open_positions()
+            await asyncio.sleep(1.0)  # Rate limit politeness
+
             instruments_raw = await client.get_instruments()
             instruments = {i.get("ticker"): i for i in instruments_raw}
 
@@ -105,6 +109,7 @@ class Trading212Adapter(BaseAdapter):
 
                 name = instrument.get("name") or instrument.get("shortName") if instrument else normalized_symbol
                 asset_currency = instrument.get("currencyCode", account_currency) if instrument else account_currency
+                isin = instrument.get("isin") if instrument else None
 
                 assets.append(
                     AssetData(
@@ -115,6 +120,7 @@ class Trading212Adapter(BaseAdapter):
                         name=name,
                         currency=asset_currency,
                         asset_type=AssetType.STOCK,
+                        isin=isin,
                         image_url=IconResolver.get_icon_url(
                             normalized_symbol,
                             AssetType.STOCK,

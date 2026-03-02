@@ -46,6 +46,8 @@ export function AssetList() {
 
     if (assets.length === 0) return <div className="text-gray-500 text-sm">No assets found.</div>;
 
+    const totalValue = assets.reduce((sum, asset) => sum + asset.usd_value, 0);
+
     return (
         <div className="bg-[#131722] rounded-xl border border-[#2A2E39] overflow-hidden">
             <div className="p-4 border-b border-[#2A2E39]">
@@ -58,6 +60,7 @@ export function AssetList() {
                             <th className="px-6 py-3">Asset</th>
                             <th className="px-6 py-3 text-right">Balance</th>
                             <th className="px-6 py-3 text-right">Value (USD)</th>
+                            <th className="px-6 py-3 text-right">Share</th>
                             <th className="px-6 py-3 text-right">Source</th>
                         </tr>
                     </thead>
@@ -73,6 +76,9 @@ export function AssetList() {
                                 </td>
                                 <td className="px-6 py-4 text-right text-white">
                                     {formatUSD(asset.usd_value)}
+                                </td>
+                                <td className="px-6 py-4 text-right text-gray-400 font-semibold">
+                                    {totalValue > 0 ? ((asset.usd_value / totalValue) * 100).toFixed(2) : "0.00"}%
                                 </td>
                                 <td className="px-6 py-4 text-right text-xs text-gray-500 font-mono">
                                     {asset.original_name}

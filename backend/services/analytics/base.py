@@ -22,6 +22,8 @@ class ConfidenceLevel(str, enum.Enum):
     HIGH = "high"
 
 
+# Order matters: resolve_confidence() iterates HIGH → MODERATE → LOW
+# and returns the first match. Do not reorder without updating that function.
 CONFIDENCE_THRESHOLDS = {
     ConfidenceLevel.HIGH: 60,
     ConfidenceLevel.MODERATE: 20,
@@ -29,6 +31,7 @@ CONFIDENCE_THRESHOLDS = {
 }
 
 MIN_DATA_POINTS = 5
+ROLLING_WINDOW = 30
 
 
 def resolve_confidence(trading_days: int) -> Optional[ConfidenceLevel]:
@@ -45,7 +48,7 @@ ANNUALIZE_FACTORS = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class PortfolioData:
     """Aligned portfolio data ready for metric calculation."""
 
@@ -62,6 +65,14 @@ class PortfolioData:
     def portfolio_returns(self) -> pd.Series:
         """Weighted portfolio returns."""
         return self.returns_df[self.symbols].dot(self.weights)
+
+    def __post_init__(self):
+        """Validate portfolio data structure."""
+        if len(self.weights) > 0:
+            total = float(np.sum(self.weights))
+            # Allow 1% rounding error
+            if abs(total - 1.0) > 0.01:
+                raise ValueError(f"Portfolio weights must sum to ~1.0, got {total:.4f}")
 
     @property
     def confidence(self) -> Optional[ConfidenceLevel]:

@@ -15,6 +15,7 @@ __pycache__/
 .Python
 backend/venv/
 backend/.venv/
+backend/.venv_win/
 backend/.env
 backend/.env.*
 backend/.pytest_cache/

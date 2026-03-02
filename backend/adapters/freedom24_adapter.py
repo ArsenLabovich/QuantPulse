@@ -41,9 +41,7 @@ class Freedom24Adapter(BaseAdapter):
         sorted_keys = sorted(body_dict.keys())
         body_str = "&".join(f"{k}={body_dict[k]}" for k in sorted_keys)
 
-        sig = hmac.new(
-            api_secret.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256
-        ).hexdigest()
+        sig = hmac.new(api_secret.encode("utf-8"), body_str.encode("utf-8"), hashlib.sha256).hexdigest()
 
         headers = {
             "X-NtApi-PublicKey": api_key,
@@ -53,15 +51,11 @@ class Freedom24Adapter(BaseAdapter):
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.post(
-                    url, data=body_dict, headers=headers, timeout=30.0
-                )
-                logger.info(f"Freedom24 Request [{cmd}] Status: {response.status_code}")
+                response = await client.post(url, data=body_dict, headers=headers, timeout=30.0)
+                logger.debug(f"Freedom24 Request [{cmd}] Status: {response.status_code}")
 
                 if response.status_code != 200:
-                    logger.error(
-                        f"Freedom24 API Error {response.status_code}: {response.text}"
-                    )
+                    logger.error(f"Freedom24 API Error {response.status_code}: {response.text}")
                     return {"error": "HTTP Error", "errMsg": response.text}
 
                 return response.json()
@@ -81,15 +75,11 @@ class Freedom24Adapter(BaseAdapter):
 
         try:
             res = await self._make_request(credentials, "getSidInfo")
-            logger.info(f"Freedom24 Auth Verification: {res}")
+            logger.debug(f"Freedom24 Auth Verification: {res}")
 
             # code 0 or absence of error code usually means success
-            if not res or (
-                isinstance(res, dict) and res.get("error") and res.get("code") != 0
-            ):
-                logger.error(
-                    f"Freedom24 Auth Check failed: {res.get('errMsg', 'Unknown error')}"
-                )
+            if not res or (isinstance(res, dict) and res.get("error") and res.get("code") != 0):
+                logger.error(f"Freedom24 Auth Check failed: {res.get('errMsg', 'Unknown error')}")
                 return False
             return True
         except Exception as e:
@@ -148,6 +138,7 @@ class Freedom24Adapter(BaseAdapter):
                 market_price = float(position.get("mkt_price", 0))
                 currency = position.get("curr", "USD")
                 name = position.get("name")
+                isin = position.get("isin") or position.get("issue_nb")
 
                 if not ticker:
                     continue
@@ -162,9 +153,9 @@ class Freedom24Adapter(BaseAdapter):
                         amount=quantity,
                         price=market_price,
                         currency=currency,
-                        name=name
-                        or clean_ticker,  # Use cleaned ticker as fallback name
+                        name=name or clean_ticker,  # Use cleaned ticker as fallback name
                         asset_type=AssetType.STOCK,
+                        isin=isin,
                         change_24h=0.0,
                         image_url=IconResolver.get_icon_url(
                             symbol=clean_ticker,
@@ -191,13 +182,13 @@ class Freedom24Adapter(BaseAdapter):
                             amount=settled_amount,
                             price=1.0,
                             currency=currency,
-                            name=f"Cash ({currency})",
+                            name=currency,
                             asset_type=AssetType.FIAT,
                             change_24h=0.0,
                         )
                     )
 
-            logger.info(f"Freedom24 successfully fetched {len(assets_list)} assets")
+            logger.debug(f"Freedom24 successfully fetched {len(assets_list)} assets")
 
         except Exception as e:
             logger.error(f"Error in Freedom24 _do_fetch: {e}")

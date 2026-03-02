@@ -8,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from models.analytics_result import AnalyticsResult
 from services.analytics.base import MetricResult, AssetFilter
 
 logger = logging.getLogger(__name__)
 
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = settings.ANALYTICS_CACHE_TTL
 _CACHE_PREFIX = "analytics"
 
 
@@ -91,7 +92,7 @@ class AnalyticsResultStore:
             },
         )
         await db.execute(stmt)
-        await db.commit()
+        # Removed: await db.commit() - Caller should handle transaction
 
     async def _save_to_cache(self, redis_client, user_id: int, result: MetricResult, asset_filter: AssetFilter) -> None:
         key = _cache_key(user_id, result.name, asset_filter.value)

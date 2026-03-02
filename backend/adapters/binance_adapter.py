@@ -52,9 +52,7 @@ class BinanceAdapter(BaseAdapter):
         api_secret = credentials.get("api_secret")
 
         try:
-            exchange = ccxt.binance(
-                {"apiKey": api_key, "secret": api_secret, "enableRateLimit": True}
-            )
+            exchange = ccxt.binance({"apiKey": api_key, "secret": api_secret, "enableRateLimit": True})
             # ccxt.binance uses blocking calls by default; we wrap them in an executor
             # to keep the event loop responsive.
             loop = asyncio.get_event_loop()
@@ -75,9 +73,7 @@ class BinanceAdapter(BaseAdapter):
         api_key = credentials.get("api_key")
         api_secret = credentials.get("api_secret")
 
-        exchange = ccxt.binance(
-            {"apiKey": api_key, "secret": api_secret, "enableRateLimit": True}
-        )
+        exchange = ccxt.binance({"apiKey": api_key, "secret": api_secret, "enableRateLimit": True})
 
         wallet_types = ["spot", "future", "delivery", "funding"]
         loop = asyncio.get_event_loop()
@@ -92,23 +88,17 @@ class BinanceAdapter(BaseAdapter):
                 return
             if symbol not in detailed_balances:
                 detailed_balances[symbol] = {}
-            detailed_balances[symbol][source] = (
-                detailed_balances[symbol].get(source, 0.0) + amount
-            )
+            detailed_balances[symbol][source] = detailed_balances[symbol].get(source, 0.0) + amount
 
         # Phase 1: Standard Wallets (Spot, Future, Delivery, Funding)
         for wallet_type in wallet_types:
             try:
                 params = {"type": wallet_type} if wallet_type != "spot" else {}
-                balance_data = await loop.run_in_executor(
-                    None, lambda: exchange.fetch_balance(params)
-                )
+                balance_data = await loop.run_in_executor(None, lambda: exchange.fetch_balance(params))
                 total_data = balance_data.get("total", {})
                 for symbol, amount in total_data.items():
                     # 'LD' prefix handles assets visible in Spot view that actually belong to Flexible Earn
-                    normalized_symbol = (
-                        symbol[2:] if symbol.startswith("LD") else symbol
-                    )
+                    normalized_symbol = symbol[2:] if symbol.startswith("LD") else symbol
                     add_balance(normalized_symbol, f"{wallet_type}-{symbol}", amount)
             except Exception as e:
                 logger.warning(f"Could not fetch Binance {wallet_type} balance: {e}")
@@ -148,16 +138,12 @@ class BinanceAdapter(BaseAdapter):
             try:
                 staking_positions = await loop.run_in_executor(
                     None,
-                    lambda: exchange.sapi_get_staking_position(
-                        {"product": product_type, "size": 100}
-                    ),
+                    lambda: exchange.sapi_get_staking_position({"product": product_type, "size": 100}),
                 )
                 for row in staking_positions:
                     symbol = row["asset"]
                     amount = float(row.get("amount") or 0)
-                    normalized_symbol = (
-                        symbol[2:] if symbol.startswith("LD") else symbol
-                    )
+                    normalized_symbol = symbol[2:] if symbol.startswith("LD") else symbol
                     add_balance(normalized_symbol, f"Staking-{product_type}", amount)
             except Exception as e:
                 logger.debug(f"Could not fetch Staking ({product_type}): {e}")
@@ -165,9 +151,7 @@ class BinanceAdapter(BaseAdapter):
 
         # 5. BNB Vault & Margin
         try:
-            vault = await loop.run_in_executor(
-                None, exchange.sapi_get_bnb_vault_account
-            )
+            vault = await loop.run_in_executor(None, exchange.sapi_get_bnb_vault_account)
             amount = float(vault.get("totalAmount") or 0)
             add_balance("BNB", "BNB-Vault", amount)
         except Exception as e:
@@ -186,16 +170,10 @@ class BinanceAdapter(BaseAdapter):
 
         # 6. Direct Funding Assets
         try:
-            funding = await loop.run_in_executor(
-                None, exchange.sapi_post_asset_get_funding_asset
-            )
+            funding = await loop.run_in_executor(None, exchange.sapi_post_asset_get_funding_asset)
             for item in funding:
                 asset = item["asset"]
-                amount = (
-                    float(item["free"])
-                    + float(item["freeze"])
-                    + float(item["withdrawing"])
-                )
+                amount = float(item["free"]) + float(item["freeze"]) + float(item["withdrawing"])
                 add_balance(asset, "Funding-Direct", amount)
         except Exception as e:
             logger.warning(f"Could not fetch Funding assets: {e}")
@@ -205,11 +183,9 @@ class BinanceAdapter(BaseAdapter):
         # Using the dedicated service to consolidate balances from multiple sources
         final_balances = BinanceDetailsDeduplicator.deduplicate(detailed_balances)
 
-        logger.info(f"Binance FINAL combined balances: {final_balances}")
+        logger.debug(f"Binance FINAL combined balances: {final_balances}")
         if skipped_sources:
-            logger.warning(
-                f"Binance sync completed with {len(skipped_sources)} skipped sources: {skipped_sources}"
-            )
+            logger.debug(f"Binance sync completed with {len(skipped_sources)} skipped sources: {skipped_sources}")
 
         # Fetch Tickers
         tickers = await loop.run_in_executor(None, exchange.fetch_tickers)
@@ -249,9 +225,7 @@ class BinanceAdapter(BaseAdapter):
                     name=symbol,
                     asset_type=AssetType.CRYPTO,
                     change_24h=change_24h,
-                    image_url=IconResolver.get_icon_url(
-                        symbol, AssetType.CRYPTO, self.get_provider_id()
-                    ),
+                    image_url=IconResolver.get_icon_url(symbol, AssetType.CRYPTO, self.get_provider_id()),
                 )
             )
         return assets

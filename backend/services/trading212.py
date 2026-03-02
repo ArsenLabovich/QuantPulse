@@ -79,7 +79,7 @@ class Trading212Client:
 
         @retry(
             retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
-            stop=stop_after_attempt(6),
+            stop=stop_after_attempt(10),
             wait=wait_trading212_ratelimit,
             reraise=True,
         )
@@ -112,25 +112,20 @@ class Trading212Client:
         """
         # Try Live First
         self.base_url = self.LIVE_URL
-        print(f"DEBUG: Trying Live URL: {self.base_url}")
         try:
             await self.get_account_cash()
-            print("DEBUG: Live Auth Success")
             return {"valid": True, "is_demo": False}
         except Exception as e:
-            print(f"DEBUG: Live Auth failed: {e}")
-            logger.info("Live Auth failed, trying Demo...")
+            logger.debug(f"Live Auth failed: {e}")
+            logger.debug("Live Auth failed, trying Demo...")
 
         # Try Demo
         self.base_url = self.DEMO_URL
-        print(f"DEBUG: Trying Demo URL: {self.base_url}")
         try:
             await self.get_account_cash()
-            print("DEBUG: Demo Auth Success")
             return {"valid": True, "is_demo": True}
         except Exception as e:
-            print(f"DEBUG: Demo Auth failed: {e}")
-            logger.error(f"Demo Auth failed too: {e}")
+            logger.debug(f"Demo Auth failed too: {e}")
             return {"valid": False, "is_demo": False}
 
     async def get_account_cash(self) -> Dict[str, Any]:
@@ -165,11 +160,11 @@ class Trading212Client:
         # 2. Try Cache
         cached_data = await self.redis.get(cache_key)
         if cached_data:
-            logger.info("Returning cached Trading212 instruments")
+            logger.debug("Returning cached Trading212 instruments")
             return json.loads(cached_data)
 
         # 3. Fetch from API
-        logger.info("Fetching Trading212 instruments from API")
+        logger.debug("Fetching Trading212 instruments from API")
         data = await self._request("GET", "/equity/metadata/instruments")
 
         # 4. Save to Cache

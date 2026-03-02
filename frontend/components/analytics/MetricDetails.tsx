@@ -12,17 +12,7 @@ interface MetricDetailsProps {
     slug: string;
 }
 
-// Mock Data Generators (Utils)
-const generateDateSeries = (days = 30) => {
-    return Array.from({ length: days }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (days - i));
-        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    });
-};
 
-
-const DATES = generateDateSeries(90);
 
 interface MetricConfig {
     title: string;
@@ -73,16 +63,7 @@ const METRIC_CONFIG: Record<string, MetricConfig> = {
         title: "Sortino Ratio Trend",
         description: "Similar to Sharpe, but only penalizes downside volatility. Better for strategies with upside skew.",
         color: "#10B981",
-        type: "line",
-        data: DATES.map((date) => ({
-            date,
-            value: 2.0 + (Math.random() - 0.4)
-        })),
-        stats: [
-            { label: "Current Ratio", value: "2.10" },
-            { label: "Downside Dev", value: "8.4%" },
-            { label: "MAR Ratio", value: "1.2" },
-        ]
+        type: "placeholder",
     },
     "treynor": {
         title: "Treynor Ratio",
@@ -324,7 +305,7 @@ export function MetricDetails({ slug }: MetricDetailsProps) {
             <div className="flex flex-col gap-2">
                 <Link
                     href="/dashboard/analytics"
-                    className="inline-flex items-center gap-2 text-[#909399] hover:text-white transition-colors text-sm mb-2 w-fit group"
+                    className="inline-flex items-center gap-2 text-text-secondary hover:text-white transition-colors text-sm mb-2 w-fit group"
                 >
                     <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Back to Dashboard
                 </Link>
