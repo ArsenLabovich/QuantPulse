@@ -54,4 +54,6 @@ scripts/
 backend/celerybeat-schedule
 .ruff_cache/
 **/.ruff_cache/
-.agent/pictures/
+
+# Agent workspace (pictures, transcripts)
+.agent/
